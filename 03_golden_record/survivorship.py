@@ -106,13 +106,6 @@ class GoldenRecordBuilder:
         """
         golden_cols = [c for c in df.columns if c.startswith("golden_")]
 
-        # Define override history schema for proper empty array initialization
-        override_history_type = (
-            "array<struct<"
-            "field:string,value:string,by:string,at:timestamp,reason:string"
-            ">>"
-        )
-
         golden_records = (df.groupBy("master_entity_id")
                           .agg(*[F.first(c).alias(c.replace("golden_", ""))
                                  for c in golden_cols],
@@ -121,7 +114,7 @@ class GoldenRecordBuilder:
                                F.max("ingestion_timestamp").alias("last_updated"))
                           .withColumn("golden_record_created_at", F.current_timestamp())
                           .withColumn("is_manually_overridden", F.lit(False))
-                          .withColumn("override_history", F.lit([]).cast(override_history_type)))
+                          .withColumn("override_history", F.lit([]).cast(self.OVERRIDE_HISTORY_TYPE)))
 
         return golden_records
 
@@ -132,13 +125,7 @@ class GoldenRecordBuilder:
         Manual overrides take precedence over all survivorship rules
         Optimized to use join instead of collect loop for better performance
         """
-        # Define override history schema for proper empty array initialization
-        override_history_type = (
-            "array<struct<"
-            "field:string,value:string,by:string,at:timestamp,reason:string"
-            ">>"
-        )
-        empty_override_array = F.lit([]).cast(override_history_type)
+        empty_override_array = F.lit([]).cast(self.OVERRIDE_HISTORY_TYPE)
 
         # Load active manual overrides
         overrides = (self.spark.read.table(overrides_table)
@@ -148,8 +135,16 @@ class GoldenRecordBuilder:
         if overrides.limit(1).count() == 0:
             return golden_df
 
+        # Deduplicate to most recent override per (master_entity_id, field_name)
+        # to ensure deterministic selection
+        window_dedup = Window.partitionBy("master_entity_id", "field_name").orderBy(F.col("override_at").desc())
+        overrides_deduped = (overrides
+                             .withColumn("row_num", F.row_number().over(window_dedup))
+                             .filter(F.col("row_num") == 1)
+                             .drop("row_num"))
+
         # Group overrides by master_entity_id to collect all field overrides
-        overrides_grouped = overrides.groupBy("master_entity_id").agg(
+        overrides_grouped = overrides_deduped.groupBy("master_entity_id").agg(
             F.collect_list(
                 F.struct(
                     F.col("field_name"),
@@ -214,7 +209,7 @@ class GoldenRecordBuilder:
             "is_manually_overridden",
             F.when(F.col("overrides_list").isNotNull(), F.lit(True))
             .otherwise(F.coalesce(F.col("golden.is_manually_overridden"), F.lit(False)))
-        ).drop("overrides_list", "overrides.master_entity_id")
+        ).drop("overrides_list")
 
         # Select only original columns
         result_df = result_df.select(*[F.col(c) if c in golden_df.columns else F.col(f"golden.{c}").alias(c)
@@ -232,13 +227,17 @@ class GoldenRecordBuilder:
         if self.spark.catalog.tableExists(table_name):
             delta_table = DeltaTable.forName(self.spark, table_name)
 
+            # Exclude golden_record_created_at from updates to preserve original creation time
+            update_cols = {
+                col: f"source.{col}"
+                for col in golden_df.columns
+                if col not in ("master_entity_id", "golden_record_created_at")
+            }
+
             delta_table.alias("target").merge(
                 golden_df.alias("source"),
                 "target.master_entity_id = source.master_entity_id"
-            ).whenMatchedUpdate(set={
-                "last_updated": "source.last_updated",
-                **{col: f"source.{col}" for col in golden_df.columns if col != "master_entity_id"}
-            }).whenNotMatchedInsertAll().execute()
+            ).whenMatchedUpdate(set=update_cols).whenNotMatchedInsertAll().execute()
 
         else:
             # First time creation
@@ -274,6 +273,7 @@ class ManualOverrideManager:
     def create_override(self, master_entity_id, field_name, override_value, override_by, reason):
         """
         Create a manual override for a golden record field
+        Deactivates any existing ACTIVE override for the same field to prevent duplicates
         """
         override_data = [(
             master_entity_id,
@@ -282,7 +282,9 @@ class ManualOverrideManager:
             override_by,
             datetime.now(),
             reason,
-            "ACTIVE"
+            "ACTIVE",
+            None,  # removed_by
+            None   # removed_at
         )]
 
         schema = StructType([
@@ -292,15 +294,31 @@ class ManualOverrideManager:
             StructField("override_by", StringType(), False),
             StructField("override_at", TimestampType(), False),
             StructField("reason", StringType(), True),
-            StructField("status", StringType(), False)
+            StructField("status", StringType(), False),
+            StructField("removed_by", StringType(), True),
+            StructField("removed_at", TimestampType(), True)
         ])
 
         override_df = self.spark.createDataFrame(override_data, schema)
 
-        # Append to overrides table
+        # Deactivate any existing ACTIVE override for this entity/field
+        # Check table existence first to avoid masking other errors
+        if self.spark.catalog.tableExists(self.overrides_table):
+            delta_table = DeltaTable.forName(self.spark, self.overrides_table)
+            delta_table.update(
+                condition=(
+                    (F.col("master_entity_id") == master_entity_id) &
+                    (F.col("field_name") == field_name) &
+                    (F.col("status") == "ACTIVE")
+                ),
+                set={"status": F.lit("SUPERSEDED")}
+            )
+
+        # Append new override row
         override_df.write \
             .format("delta") \
             .mode("append") \
+            .option("mergeSchema", "true") \
             .saveAsTable(self.overrides_table)
 
         print(f"Created override for {master_entity_id}.{field_name}")
@@ -389,15 +407,20 @@ class AdvancedSurvivorshipRules:
     def most_frequent(df, field, partition_col="master_entity_id"):
         """
         Select most frequently occurring value
+        Broadcasts the selected value to all rows in the partition
         """
         # Count occurrences of each value
         window_count = Window.partitionBy(partition_col, field)
-        window_rank = Window.partitionBy(partition_col).orderBy(F.desc("value_count"))
+        window_rank = Window.partitionBy(partition_col).orderBy(F.desc("value_count"), F.col(field))
+        partition_window = Window.partitionBy(partition_col)
 
         return (df.withColumn("value_count", F.count(field).over(window_count))
                   .withColumn("rank", F.row_number().over(window_rank))
                   .withColumn(f"golden_{field}",
-                              F.when(F.col("rank") == 1, F.col(field)))
+                              F.first(
+                                  F.when(F.col("rank") == 1, F.col(field)),
+                                  ignorenulls=True
+                              ).over(partition_window))
                   .drop("value_count", "rank"))
 
     @staticmethod
@@ -431,16 +454,24 @@ class AdvancedSurvivorshipRules:
     def consensus_value(df, field, min_agreement=2, partition_col="master_entity_id"):
         """
         Select value that appears in at least N sources (consensus)
+        Broadcasts the selected value to all rows in the partition
+        Sets golden_{field} to null when no value meets the consensus threshold
         """
         window_count = Window.partitionBy(partition_col, field)
-        window_rank = Window.partitionBy(partition_col).orderBy(F.desc("source_count"))
+        window_rank = Window.partitionBy(partition_col).orderBy(F.desc("source_count"), F.col(field))
+        partition_window = Window.partitionBy(partition_col)
 
         return (df.withColumn("source_count",
                               F.count(F.col("source_system")).over(window_count))
-                  .filter(F.col("source_count") >= min_agreement)
                   .withColumn("rank", F.row_number().over(window_rank))
                   .withColumn(f"golden_{field}",
-                              F.when(F.col("rank") == 1, F.col(field)))
+                              F.first(
+                                  F.when(
+                                      (F.col("rank") == 1) & (F.col("source_count") >= min_agreement),
+                                      F.col(field)
+                                  ),
+                                  ignorenulls=True
+                              ).over(partition_window))
                   .drop("source_count", "rank"))
 
     @staticmethod
@@ -493,11 +524,14 @@ class SourcePriorityManager:
 
         priority_df = self.spark.createDataFrame(priority_data, schema)
 
-        # Merge with existing priorities
+        # Use replaceWhere for partition-scoped overwrite to preserve other entity types
+        # Escape single quotes in entity_type for SQL safety
+        entity_type_escaped = entity_type.replace("'", "''")
         priority_df.write \
             .format("delta") \
             .mode("overwrite") \
             .option("mergeSchema", "true") \
+            .option("replaceWhere", f"entity_type = '{entity_type_escaped}'") \
             .partitionBy("entity_type") \
             .saveAsTable(self.priority_table)
 
