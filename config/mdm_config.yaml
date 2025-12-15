@@ -1,0 +1,195 @@
+# MDM Configuration
+mdm:
+  # Storage paths
+  storage:
+    bronze_path: /mnt/mdm/bronze
+    silver_path: /mnt/mdm/silver
+    gold_path: /mnt/mdm/gold
+    checkpoint_path: /mnt/mdm/checkpoints
+    catalog_name: mdm_catalog
+    schema_name: master_data
+
+  # Source systems configuration
+  sources:
+    sap:
+      enabled: true
+      connection_type: jdbc
+      jdbc_url: ${SAP_JDBC_URL}
+      username: ${SAP_USERNAME}
+      password: ${SAP_PASSWORD}
+      tables:
+        - KNA1  # Customer master
+        - LFA1  # Vendor master
+        - MARA  # Material master
+      schedule: "0 0 */4 * * ?"  # Every 4 hours
+
+    salesforce:
+      enabled: true
+      connection_type: rest_api
+      instance_url: ${SFDC_INSTANCE_URL}
+      username: ${SFDC_USERNAME}
+      password: ${SFDC_PASSWORD}
+      security_token: ${SFDC_SECURITY_TOKEN}
+      objects:
+        - Account
+        - Contact
+        - Lead
+      schedule: "0 */15 * * * ?"  # Every 15 minutes
+
+    oracle:
+      enabled: true
+      connection_type: jdbc
+      jdbc_url: ${ORACLE_JDBC_URL}
+      username: ${ORACLE_USERNAME}
+      password: ${ORACLE_PASSWORD}
+      tables:
+        - CUSTOMERS
+        - SUPPLIERS
+        - PRODUCTS
+      schedule: "0 0 */6 * * ?"  # Every 6 hours
+
+    odoo:
+      enabled: true
+      connection_type: xmlrpc
+      url: ${ODOO_URL}
+      database: ${ODOO_DATABASE}
+      username: ${ODOO_USERNAME}
+      password: ${ODOO_PASSWORD}
+      models:
+        - res.partner
+        - product.product
+      schedule: "0 0 1 * * ?"  # Daily at 1 AM
+
+  # Real-time streaming
+  streaming:
+    enabled: true
+    kafka:
+      bootstrap_servers: ${KAFKA_BOOTSTRAP_SERVERS}
+      topics:
+        customer_changes: mdm.customer.changes
+        vendor_changes: mdm.vendor.changes
+      consumer_group: mdm-consumer-group
+    kinesis:
+      enabled: false
+      stream_name: mdm-stream
+      region: us-east-1
+
+  # Entity matching configuration
+  matching:
+    customer:
+      exact_keys:
+        - email
+        - customer_id
+      fuzzy_keys:
+        - name
+        - address
+        - phone
+      ml_features:
+        - name
+        - address
+        - city
+        - country
+      fuzzy_threshold: 0.85
+      blocking_keys:
+        - country
+        - postal_code_prefix
+      auto_merge_threshold: 0.95
+      manual_review_threshold: 0.75
+
+    product:
+      exact_keys:
+        - sku
+        - upc
+      fuzzy_keys:
+        - product_name
+        - description
+      ml_features:
+        - product_name
+        - description
+        - category
+      fuzzy_threshold: 0.88
+
+  # Survivorship rules
+  survivorship:
+    customer:
+      customer_id:
+        strategy: SOURCE_PRIORITY
+        source_priority:
+          SAP: 1
+          Salesforce: 2
+          Oracle: 3
+          Odoo: 4
+      name:
+        strategy: MOST_COMPLETE
+        completeness_fields:
+          - first_name
+          - last_name
+          - middle_name
+      email:
+        strategy: MOST_RECENT
+      phone:
+        strategy: SOURCE_PRIORITY
+        source_priority:
+          Salesforce: 1
+          SAP: 2
+      address:
+        strategy: MOST_COMPLETE
+        completeness_fields:
+          - street
+          - city
+          - state
+          - postal_code
+          - country
+      credit_limit:
+        strategy: SOURCE_PRIORITY
+        source_priority:
+          SAP: 1
+
+  # Data quality rules
+  data_quality:
+    customer:
+      critical_fields:
+        - customer_id
+        - name
+        - email
+      validation_rules:
+        email:
+          - type: regex
+            pattern: "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$"
+        phone:
+          - type: regex
+            pattern: "^\\+?1?\\d{9,15}$"
+        postal_code:
+          - type: not_null
+        country:
+          - type: value_set
+            values: [US, CA, GB, DE, FR, AU, IN]
+      completeness_threshold: 0.8
+      accuracy_threshold: 0.9
+
+  # Unity Catalog
+  unity_catalog:
+    enabled: true
+    catalog_name: mdm_catalog
+    schemas:
+      - bronze
+      - silver
+      - gold
+    lineage_tracking: true
+    audit_logging: true
+
+  # API configuration
+  api:
+    host: 0.0.0.0
+    port: 8000
+    version: v1
+    rate_limit: 1000  # requests per minute
+    webhook:
+      enabled: true
+      events:
+        - entity.created
+        - entity.updated
+        - entity.merged
+        - entity.deleted
+        - quality.issue_detected
+        - match.requires_review
