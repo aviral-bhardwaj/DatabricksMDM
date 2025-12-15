@@ -4,7 +4,7 @@ Enterprise Master Data Management SDK
 """
 
 import requests
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Any
 import json
 from datetime import datetime
 
@@ -158,7 +158,7 @@ class MDMClient:
     # Manual Overrides
 
     def create_override(self, master_id: str, field_name: str,
-                       override_value: any, reason: str) -> Dict:
+                       override_value: Any, reason: str) -> Dict:
         """
         Create manual override for a field
 

@@ -8,7 +8,6 @@
 
 from databricks.sdk import WorkspaceClient
 from pyspark.sql import SparkSession, functions as F
-from pyspark.sql.types import *
 from delta.tables import DeltaTable
 import requests
 import json
@@ -127,23 +126,22 @@ class MDMSourceConnector:
             records = data['records']
             df = self.spark.createDataFrame(records)
 
+            # Add metadata
+            df = (df.withColumn("source_system", F.lit("Salesforce"))
+                    .withColumn("ingestion_timestamp", F.current_timestamp())
+                    .withColumn("source_record_id", F.col("Id"))
+                    .withColumn("ingestion_mode", F.lit(mode)))
+
+            return df
+
         else:
-            # Streaming mode - use Platform Events or Change Data Capture
-            df = (self.spark.readStream
-                  .format("salesforce")
-                  .option("sfObject", config['object'])
-                  .option("sfUsername", config['username'])
-                  .option("sfPassword", config['password'])
-                  .option("sfSecurityToken", config['security_token'])
-                  .load())
-
-        # Add metadata
-        df = (df.withColumn("source_system", F.lit("Salesforce"))
-                .withColumn("ingestion_timestamp", F.current_timestamp())
-                .withColumn("source_record_id", F.col("Id"))
-                .withColumn("ingestion_mode", F.lit(mode)))
-
-        return df
+            # Streaming mode requires external connector
+            # format("salesforce") is not a built-in Spark source
+            raise NotImplementedError(
+                "Salesforce streaming requires a custom connector or CDC tool. "
+                "Use batch mode with polling-based incremental updates, "
+                "or set up Salesforce Change Data Capture -> Kafka and stream via ingest_from_kafka()."
+            )
 
     def _ingest_oracle(self, config, mode='batch'):
         """
@@ -161,24 +159,22 @@ class MDMSourceConnector:
                   .option("numPartitions", "4")
                   .option("partitionColumn", config.get('partition_column', 'ID'))
                   .load())
+
+            # Add metadata
+            df = (df.withColumn("source_system", F.lit("Oracle"))
+                    .withColumn("ingestion_timestamp", F.current_timestamp())
+                    .withColumn("source_record_id", F.col(config.get('primary_key', 'ID')))
+                    .withColumn("ingestion_mode", F.lit(mode)))
+
+            return df
+
         else:
-            # Streaming mode using incremental load
-            df = (self.spark.readStream
-                  .format("jdbc")
-                  .option("url", config['jdbc_url'])
-                  .option("dbtable", config['table'])
-                  .option("user", config['user'])
-                  .option("password", config['password'])
-                  .option("incrementalColumn", config.get('incremental_column', 'LAST_UPDATE_DATE'))
-                  .load())
-
-        # Add metadata
-        df = (df.withColumn("source_system", F.lit("Oracle"))
-                .withColumn("ingestion_timestamp", F.current_timestamp())
-                .withColumn("source_record_id", F.col(config.get('primary_key', 'ID')))
-                .withColumn("ingestion_mode", F.lit(mode)))
-
-        return df
+            # Streaming over JDBC is not supported in Spark/Databricks
+            # Use CDC (e.g., Debezium -> Kafka) or an incremental batch pattern instead
+            raise NotImplementedError(
+                "Oracle streaming via JDBC is not supported. "
+                "Use batch mode with an incremental_column or stream from a CDC source (e.g., Kafka)."
+            )
 
     def _ingest_odoo(self, config, mode='batch'):
         """

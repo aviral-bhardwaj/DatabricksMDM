@@ -6,7 +6,7 @@
 # COMMAND ----------
 
 from pyspark.sql import SparkSession, functions as F, Window
-from pyspark.sql.types import *
+from pyspark.sql.types import StructType, StructField, StringType, IntegerType, TimestampType
 from delta.tables import DeltaTable
 from datetime import datetime
 
@@ -58,17 +58,20 @@ class GoldenRecordBuilder:
             )
 
         elif rule['strategy'] == 'SOURCE_PRIORITY':
-            # Source priority: SAP > Salesforce > Others
+            # Source priority based on configured priority map
             priority_map = rule['source_priority']
+
+            # Build dynamic when clause from configured priority map
+            # Start with a high default rank for unconfigured sources
+            priority_expr = F.lit(999)
+            for source, rank in priority_map.items():
+                priority_expr = F.when(F.col("source_system") == source, rank).otherwise(priority_expr)
 
             window = (Window.partitionBy("master_entity_id")
                       .orderBy(F.col("source_priority_rank"),
                                F.col("ingestion_timestamp").desc()))
 
-            df = (df.withColumn("source_priority_rank",
-                                F.when(F.col("source_system") == "SAP", 1)
-                                .when(F.col("source_system") == "Salesforce", 2)
-                                .otherwise(3))
+            df = (df.withColumn("source_priority_rank", priority_expr)
                   .withColumn(f"golden_{field}",
                               F.first(F.col(field), ignorenulls=True).over(window)))
 
@@ -96,6 +99,13 @@ class GoldenRecordBuilder:
         """
         golden_cols = [c for c in df.columns if c.startswith("golden_")]
 
+        # Define override history schema for proper empty array initialization
+        override_history_type = (
+            "array<struct<"
+            "field:string,value:string,by:string,at:timestamp,reason:string"
+            ">>"
+        )
+
         golden_records = (df.groupBy("master_entity_id")
                           .agg(*[F.first(c).alias(c.replace("golden_", ""))
                                  for c in golden_cols],
@@ -104,7 +114,7 @@ class GoldenRecordBuilder:
                                F.max("ingestion_timestamp").alias("last_updated"))
                           .withColumn("golden_record_created_at", F.current_timestamp())
                           .withColumn("is_manually_overridden", F.lit(False))
-                          .withColumn("override_history", F.array()))
+                          .withColumn("override_history", F.lit([]).cast(override_history_type)))
 
         return golden_records
 
@@ -115,12 +125,20 @@ class GoldenRecordBuilder:
         Manual overrides take precedence over all survivorship rules
         Optimized to use join instead of collect loop for better performance
         """
+        # Define override history schema for proper empty array initialization
+        override_history_type = (
+            "array<struct<"
+            "field:string,value:string,by:string,at:timestamp,reason:string"
+            ">>"
+        )
+        empty_override_array = F.lit([]).cast(override_history_type)
+
         # Load active manual overrides
         overrides = (self.spark.read.table(overrides_table)
                      .filter(F.col("status") == "ACTIVE"))
 
-        # Check if there are any overrides
-        if overrides.count() == 0:
+        # Check if there are any overrides (optimized to avoid full scan)
+        if overrides.limit(1).count() == 0:
             return golden_df
 
         # Group overrides by master_entity_id to collect all field overrides
@@ -172,7 +190,7 @@ class GoldenRecordBuilder:
             F.when(
                 F.col("overrides_list").isNotNull(),
                 F.array_union(
-                    F.coalesce(F.col("golden.override_history"), F.array()),
+                    F.coalesce(F.col("golden.override_history"), empty_override_array),
                     F.transform(
                         F.col("overrides_list"),
                         lambda x: F.struct(
@@ -184,7 +202,7 @@ class GoldenRecordBuilder:
                         )
                     )
                 )
-            ).otherwise(F.coalesce(F.col("golden.override_history"), F.array()))
+            ).otherwise(F.coalesce(F.col("golden.override_history"), empty_override_array))
         ).withColumn(
             "is_manually_overridden",
             F.when(F.col("overrides_list").isNotNull(), F.lit(True))
@@ -203,8 +221,8 @@ class GoldenRecordBuilder:
         """
         table_name = f"{catalog}.{schema}.{entity_type}_golden"
 
-        # Use merge to handle updates
-        if DeltaTable.isDeltaTable(self.spark, table_name):
+        # Use merge to handle updates if the table already exists
+        if self.spark.catalog.tableExists(table_name):
             delta_table = DeltaTable.forName(self.spark, table_name)
 
             delta_table.alias("target").merge(
@@ -473,7 +491,7 @@ class SourcePriorityManager:
             .format("delta") \
             .mode("overwrite") \
             .option("mergeSchema", "true") \
-            .option("partitionBy", "entity_type") \
+            .partitionBy("entity_type") \
             .saveAsTable(self.priority_table)
 
     def get_source_priority(self, entity_type):
