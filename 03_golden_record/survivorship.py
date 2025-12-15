@@ -345,8 +345,8 @@ class AdvancedSurvivorshipRules:
         Calculate weighted average based on source reliability scores
         Useful for numeric fields
         """
-        # Add weights based on source
-        df_weighted = df
+        # Initialize source_weight column
+        df_weighted = df.withColumn("source_weight", F.lit(1.0))
 
         for source, weight in source_weights.items():
             df_weighted = df_weighted.withColumn(

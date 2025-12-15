@@ -14,16 +14,18 @@ class MDMClient:
     Python SDK for Databricks MDM API
     """
 
-    def __init__(self, api_url: str, api_key: str):
+    def __init__(self, api_url: str, api_key: str, timeout: tuple = (10, 30)):
         """
         Initialize MDM Client
 
         Args:
             api_url: Base URL of MDM API
             api_key: API authentication key
+            timeout: (connect_timeout, read_timeout) in seconds
         """
         self.api_url = api_url.rstrip('/')
         self.api_key = api_key
+        self.timeout = timeout
         self.session = requests.Session()
         self.session.headers.update({
             "Authorization": f"Bearer {api_key}",
@@ -55,7 +57,8 @@ class MDMClient:
 
         response = self.session.post(
             f"{self.api_url}/api/v1/entities/search",
-            json=payload
+            json=payload,
+            timeout=self.timeout
         )
 
         response.raise_for_status()
@@ -298,14 +301,16 @@ class MDMClient:
         Returns:
             Quality issues
         """
-        payload = {
+        params = {
             "entity_type": entity_type,
-            "severity_filter": severity_filter
         }
+        if severity_filter:
+            params["severity_filter"] = severity_filter
 
         response = self.session.get(
             f"{self.api_url}/api/v1/quality/issues",
-            json=payload
+            params=params,
+            timeout=self.timeout
         )
 
         response.raise_for_status()

@@ -157,9 +157,9 @@ class EntityMatcher:
                 # Try to load existing model
                 model = mlflow.spark.load_model(model_path)
                 print(f"Loaded existing model from {model_path}")
-            except:
-                # Train new model
-                print("Training new matching model...")
+            except Exception as e:
+                # Train new model if not found or load fails
+                print(f"Model not found or failed to load ({e}), training new matching model...")
                 model = self._train_matching_model(feature_df, entity_type)
                 mlflow.spark.log_model(model, "matching_model")
                 mlflow.spark.save_model(model, model_path)

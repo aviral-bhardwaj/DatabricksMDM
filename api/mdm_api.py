@@ -233,10 +233,11 @@ async def get_quality_scores(entity_type: Optional[str] = None,
 
 
 @app.get("/api/v1/quality/issues")
-async def get_quality_issues(request: DataQualityRequest,
+async def get_quality_issues(entity_type: str,
+                            severity_filter: Optional[str] = None,
                             credentials: HTTPAuthorizationCredentials = Depends(security)):
     """Get data quality issues"""
-    issues = _get_quality_issues(request.entity_type, request.severity_filter)
+    issues = _get_quality_issues(entity_type, severity_filter)
     return {"status": "success", "data": issues, "count": len(issues)}
 
 

@@ -66,15 +66,13 @@ class MDMSourceConnector:
                   .option("fetchsize", "10000")
                   .load())
         else:
-            # Streaming mode - use change data capture
-            df = (self.spark.readStream
-                  .format("jdbc")
-                  .option("url", config['jdbc_url'])
-                  .option("dbtable", config['table'])
-                  .option("user", config['user'])
-                  .option("password", config['password'])
-                  .option("incrementalColumn", config.get('incremental_column', 'CHANGED_AT'))
-                  .load())
+            # Streaming mode requires external CDC tool (Debezium -> Kafka)
+            # JDBC does not support readStream in Spark
+            raise NotImplementedError(
+                "SAP streaming requires CDC via Kafka/Debezium. "
+                "Use batch mode with incremental_column for polling-based updates, "
+                "or set up Debezium to capture SAP changes and stream via Kafka."
+            )
 
         # Add metadata
         df = (df.withColumn("source_system", F.lit("SAP"))
