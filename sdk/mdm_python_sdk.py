@@ -5,13 +5,12 @@ Enterprise Master Data Management SDK
 
 import requests
 from typing import List, Dict, Optional, Any
-import json
-from datetime import datetime
 
 
 class MDMClient:
     """
     Python SDK for Databricks MDM API
+    Supports context manager protocol for proper resource cleanup
     """
 
     def __init__(self, api_url: str, api_key: str, timeout: tuple = (10, 30)):
@@ -31,6 +30,20 @@ class MDMClient:
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json"
         })
+
+    def __enter__(self):
+        """Context manager entry"""
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Context manager exit with cleanup"""
+        self.close()
+        return False
+
+    def close(self):
+        """Close the session and release resources"""
+        if self.session:
+            self.session.close()
 
     # Entity Management
 

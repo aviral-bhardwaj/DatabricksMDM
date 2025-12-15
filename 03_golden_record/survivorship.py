@@ -16,6 +16,13 @@ class GoldenRecordBuilder:
     Build golden records using survivorship rules
     """
 
+    # Override history schema as class constant
+    OVERRIDE_HISTORY_TYPE = (
+        "array<struct<"
+        "field:string,value:string,by:string,at:timestamp,reason:string"
+        ">>"
+    )
+
     def __init__(self, spark, survivorship_config):
         self.spark = spark
         self.config = survivorship_config

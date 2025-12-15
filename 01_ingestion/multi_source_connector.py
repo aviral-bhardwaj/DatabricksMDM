@@ -97,6 +97,8 @@ class MDMSourceConnector:
 
             # Query data - use safe field-based query building
             # Only allow soql_query if explicitly enabled, otherwise build from fields
+            record_id_field = config.get('record_id_field', 'Id')
+
             if config.get('allow_custom_soql', False) and 'soql_query' in config:
                 soql = config['soql_query']
                 # Validate SOQL to prevent injection
@@ -104,6 +106,10 @@ class MDMSourceConnector:
             else:
                 # Build safe SOQL from fields list
                 fields = config.get('fields', ['Id', 'Name'])
+                # Ensure record ID field (usually 'Id') is always included
+                if record_id_field not in fields:
+                    fields = [record_id_field] + list(fields)
+
                 # Validate field names (alphanumeric, underscore, period only)
                 for field in fields:
                     if not all(c.isalnum() or c in ('_', '.') for c in field):
@@ -120,16 +126,31 @@ class MDMSourceConnector:
                     # Basic validation - no SOQL injection patterns
                     self._validate_soql_fragment(where)
                     soql += f" WHERE {where}"
-            data = sf.query_all(soql)
 
-            # Convert to DataFrame
+            data = sf.query_all(soql)
             records = data['records']
-            df = self.spark.createDataFrame(records)
+
+            # Handle empty results - need schema for createDataFrame
+            if records:
+                df = self.spark.createDataFrame(records)
+            else:
+                # No records returned - create empty DataFrame with schema if provided
+                from pyspark.sql.types import StructType
+                schema = config.get('schema')
+                if schema is None:
+                    raise ValueError(
+                        f"Salesforce query returned no records for {config['object']}. "
+                        "Provide 'schema' in config to handle empty results."
+                    )
+                df = self.spark.createDataFrame(
+                    self.spark.sparkContext.emptyRDD(),
+                    schema=schema
+                )
 
             # Add metadata
             df = (df.withColumn("source_system", F.lit("Salesforce"))
                     .withColumn("ingestion_timestamp", F.current_timestamp())
-                    .withColumn("source_record_id", F.col("Id"))
+                    .withColumn("source_record_id", F.col(record_id_field))
                     .withColumn("ingestion_mode", F.lit(mode)))
 
             return df
@@ -148,17 +169,34 @@ class MDMSourceConnector:
         Oracle database extraction using JDBC
         """
         if mode == 'batch':
-            df = (self.spark.read
-                  .format("jdbc")
-                  .option("url", config['jdbc_url'])
-                  .option("dbtable", config['table'])
-                  .option("user", config['user'])
-                  .option("password", config['password'])
-                  .option("driver", "oracle.jdbc.driver.OracleDriver")
-                  .option("fetchsize", "10000")
-                  .option("numPartitions", "4")
-                  .option("partitionColumn", config.get('partition_column', 'ID'))
-                  .load())
+            reader = (self.spark.read
+                      .format("jdbc")
+                      .option("url", config['jdbc_url'])
+                      .option("dbtable", config['table'])
+                      .option("user", config['user'])
+                      .option("password", config['password'])
+                      .option("driver", "oracle.jdbc.driver.OracleDriver")
+                      .option("fetchsize", "10000"))
+
+            # Only enable JDBC partitioning if ALL required parameters are provided
+            partition_column = config.get("partition_column")
+            lower_bound = config.get("lower_bound")
+            upper_bound = config.get("upper_bound")
+            num_partitions = config.get("num_partitions")
+
+            if all(v is not None for v in (partition_column, lower_bound, upper_bound, num_partitions)):
+                reader = (reader
+                          .option("partitionColumn", partition_column)
+                          .option("lowerBound", str(lower_bound))
+                          .option("upperBound", str(upper_bound))
+                          .option("numPartitions", str(num_partitions)))
+            elif any(v is not None for v in (partition_column, lower_bound, upper_bound, num_partitions)):
+                raise ValueError(
+                    "To enable Oracle JDBC partitioning, provide all of: "
+                    "partition_column, lower_bound, upper_bound, and num_partitions in config."
+                )
+
+            df = reader.load()
 
             # Add metadata
             df = (df.withColumn("source_system", F.lit("Oracle"))
@@ -191,6 +229,13 @@ class MDMSourceConnector:
                 {}
             )
 
+            # Check authentication success
+            if not uid:
+                raise ConnectionError(
+                    f"Failed to authenticate with Odoo at {config['url']}. "
+                    "Check database, username, and password."
+                )
+
             models = xmlrpc.client.ServerProxy(f"{config['url']}/xmlrpc/2/object")
 
             # Search and read records
@@ -203,39 +248,64 @@ class MDMSourceConnector:
                 model, 'search', [domain]
             )
 
-            records = models.execute_kw(
-                config['database'], uid, config['password'],
-                model, 'read', [record_ids], {'fields': fields}
-            )
+            # Handle empty results
+            if record_ids:
+                records = models.execute_kw(
+                    config['database'], uid, config['password'],
+                    model, 'read', [record_ids], {'fields': fields}
+                )
+                df = self.spark.createDataFrame(records)
+            else:
+                # No matching records - create empty DataFrame with schema if provided
+                from pyspark.sql.types import StructType
+                schema = config.get('schema')
+                if schema is None:
+                    raise ValueError(
+                        f"Odoo query returned no records for model {model}. "
+                        "Provide 'schema' in config to handle empty results."
+                    )
+                df = self.spark.createDataFrame(
+                    self.spark.sparkContext.emptyRDD(),
+                    schema=schema
+                )
 
-            # Convert to DataFrame
-            df = self.spark.createDataFrame(records)
+            # Add metadata
+            df = (df.withColumn("source_system", F.lit("Odoo"))
+                    .withColumn("ingestion_timestamp", F.current_timestamp())
+                    .withColumn("source_record_id", F.col("id"))
+                    .withColumn("ingestion_mode", F.lit(mode)))
+
+            return df
 
         else:
             # For streaming, poll API periodically (Odoo doesn't have native streaming)
             raise NotImplementedError("Odoo streaming mode requires custom implementation")
 
-        # Add metadata
-        df = (df.withColumn("source_system", F.lit("Odoo"))
-                .withColumn("ingestion_timestamp", F.current_timestamp())
-                .withColumn("source_record_id", F.col("id"))
-                .withColumn("ingestion_mode", F.lit(mode)))
-
-        return df
-
     def ingest_from_kafka(self, topic, kafka_config):
         """
         Real-time ingestion from Kafka topics
+        Only sets security options when explicitly provided in config
         """
-        df = (self.spark.readStream
-              .format("kafka")
-              .option("kafka.bootstrap.servers", kafka_config['bootstrap_servers'])
-              .option("subscribe", topic)
-              .option("startingOffsets", "latest")
-              .option("kafka.security.protocol", kafka_config.get('security_protocol', 'SASL_SSL'))
-              .option("kafka.sasl.mechanism", kafka_config.get('sasl_mechanism', 'PLAIN'))
-              .option("kafka.sasl.jaas.config", kafka_config.get('sasl_jaas_config'))
-              .load())
+        reader = (self.spark.readStream
+                  .format("kafka")
+                  .option("kafka.bootstrap.servers", kafka_config['bootstrap_servers'])
+                  .option("subscribe", topic)
+                  .option("startingOffsets", kafka_config.get('starting_offsets', 'latest')))
+
+        # Only set security options if provided (avoid breaking PLAINTEXT clusters)
+        security_protocol = kafka_config.get('security_protocol')
+        if security_protocol:
+            reader = reader.option("kafka.security.protocol", security_protocol)
+
+        sasl_mechanism = kafka_config.get('sasl_mechanism')
+        if sasl_mechanism:
+            reader = reader.option("kafka.sasl.mechanism", sasl_mechanism)
+
+        sasl_jaas = kafka_config.get('sasl_jaas_config')
+        if sasl_jaas:
+            reader = reader.option("kafka.sasl.jaas.config", sasl_jaas)
+
+        df = reader.load()
 
         # Parse JSON messages
         schema = kafka_config.get('value_schema')
@@ -250,15 +320,25 @@ class MDMSourceConnector:
     def ingest_from_kinesis(self, stream_name, kinesis_config):
         """
         Real-time ingestion from AWS Kinesis
+        Prefer using AWS credential provider chain or Databricks secrets for production
         """
-        df = (self.spark.readStream
-              .format("kinesis")
-              .option("streamName", stream_name)
-              .option("region", kinesis_config.get('region', 'us-east-1'))
-              .option("initialPosition", "latest")
-              .option("awsAccessKeyId", kinesis_config['access_key_id'])
-              .option("awsSecretKey", kinesis_config['secret_access_key'])
-              .load())
+        reader = (self.spark.readStream
+                  .format("kinesis")
+                  .option("streamName", stream_name)
+                  .option("region", kinesis_config.get('region', 'us-east-1'))
+                  .option("initialPosition", "latest"))
+
+        # Only set AWS credentials if explicitly provided
+        # Recommended: use instance profiles or Databricks secrets instead
+        access_key_id = kinesis_config.get('access_key_id')
+        secret_access_key = kinesis_config.get('secret_access_key')
+
+        if access_key_id and secret_access_key:
+            reader = (reader
+                      .option("awsAccessKeyId", access_key_id)
+                      .option("awsSecretKey", secret_access_key))
+
+        df = reader.load()
 
         # Parse records
         schema = kinesis_config.get('data_schema')
@@ -286,8 +366,14 @@ class MDMSourceConnector:
                 .saveAsTable(table_name)
 
         else:
-            # Streaming write
-            checkpoint_path = f"{self.config['checkpoint_path']}/{entity_type}_bronze"
+            # Streaming write - requires checkpoint_path in config
+            checkpoint_base = self.config.get('checkpoint_path')
+            if not checkpoint_base:
+                raise ValueError(
+                    f"Streaming bronze writes for '{entity_type}' require 'checkpoint_path' "
+                    "in the connector config."
+                )
+            checkpoint_path = f"{checkpoint_base}/{entity_type}_bronze"
 
             query = (df.writeStream
                        .format("delta")
