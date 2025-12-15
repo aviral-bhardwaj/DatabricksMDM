@@ -113,49 +113,89 @@ class GoldenRecordBuilder:
         Apply manual overrides to golden records
 
         Manual overrides take precedence over all survivorship rules
+        Optimized to use join instead of collect loop for better performance
         """
-        # Load manual overrides
-        overrides = self.spark.read.table(overrides_table)
+        # Load active manual overrides
+        overrides = (self.spark.read.table(overrides_table)
+                     .filter(F.col("status") == "ACTIVE"))
 
-        # Join with golden records
-        for override_row in overrides.collect():
-            master_id = override_row['master_entity_id']
-            field = override_row['field_name']
-            override_value = override_row['override_value']
-            override_by = override_row['override_by']
-            override_at = override_row['override_at']
-            reason = override_row['reason']
+        # Check if there are any overrides
+        if overrides.count() == 0:
+            return golden_df
 
-            # Update golden record with override
-            golden_df = golden_df.withColumn(
+        # Group overrides by master_entity_id to collect all field overrides
+        overrides_grouped = overrides.groupBy("master_entity_id").agg(
+            F.collect_list(
+                F.struct(
+                    F.col("field_name"),
+                    F.col("override_value"),
+                    F.col("override_by"),
+                    F.col("override_at"),
+                    F.col("reason")
+                )
+            ).alias("overrides_list")
+        )
+
+        # Left join golden records with grouped overrides
+        golden_with_overrides = golden_df.alias("golden").join(
+            overrides_grouped.alias("overrides"),
+            F.col("golden.master_entity_id") == F.col("overrides.master_entity_id"),
+            "left"
+        )
+
+        # Get list of fields that can be overridden (exclude metadata fields)
+        exclude_fields = {"master_entity_id", "source_systems", "source_record_ids",
+                         "last_updated", "golden_record_created_at", "is_manually_overridden",
+                         "override_history", "overrides_list"}
+        override_fields = [f for f in golden_df.columns if f not in exclude_fields]
+
+        # Apply overrides for each field using when clauses
+        result_df = golden_with_overrides
+        for field in override_fields:
+            # Build when clause to check if this field has an override
+            result_df = result_df.withColumn(
                 field,
-                F.when(F.col("master_entity_id") == master_id, F.lit(override_value))
-                .otherwise(F.col(field))
+                F.when(
+                    F.col("overrides_list").isNotNull(),
+                    F.coalesce(
+                        F.expr(f"""
+                            filter(overrides_list, x -> x.field_name = '{field}')[0].override_value
+                        """),
+                        F.col(f"golden.{field}")
+                    )
+                ).otherwise(F.col(f"golden.{field}"))
             )
 
-            # Track override history
-            override_metadata = F.struct(
-                F.lit(field).alias("field"),
-                F.lit(override_value).alias("value"),
-                F.lit(override_by).alias("by"),
-                F.lit(override_at).alias("at"),
-                F.lit(reason).alias("reason")
-            )
+        # Update override history and flag
+        result_df = result_df.withColumn(
+            "override_history",
+            F.when(
+                F.col("overrides_list").isNotNull(),
+                F.array_union(
+                    F.coalesce(F.col("golden.override_history"), F.array()),
+                    F.transform(
+                        F.col("overrides_list"),
+                        lambda x: F.struct(
+                            x.field_name.alias("field"),
+                            x.override_value.alias("value"),
+                            x.override_by.alias("by"),
+                            x.override_at.alias("at"),
+                            x.reason.alias("reason")
+                        )
+                    )
+                )
+            ).otherwise(F.coalesce(F.col("golden.override_history"), F.array()))
+        ).withColumn(
+            "is_manually_overridden",
+            F.when(F.col("overrides_list").isNotNull(), F.lit(True))
+            .otherwise(F.coalesce(F.col("golden.is_manually_overridden"), F.lit(False)))
+        ).drop("overrides_list", "overrides.master_entity_id")
 
-            golden_df = golden_df.withColumn(
-                "override_history",
-                F.when(F.col("master_entity_id") == master_id,
-                       F.array_union(F.col("override_history"), F.array(override_metadata)))
-                .otherwise(F.col("override_history"))
-            )
+        # Select only original columns
+        result_df = result_df.select(*[F.col(c) if c in golden_df.columns else F.col(f"golden.{c}").alias(c)
+                                       for c in golden_df.columns])
 
-            golden_df = golden_df.withColumn(
-                "is_manually_overridden",
-                F.when(F.col("master_entity_id") == master_id, True)
-                .otherwise(F.col("is_manually_overridden"))
-            )
-
-        return golden_df
+        return result_df
 
     def save_golden_records(self, golden_df, catalog, schema, entity_type):
         """
@@ -269,29 +309,25 @@ class ManualOverrideManager:
         """
         Get all active overrides, optionally filtered by master entity ID
         """
-        query = f"SELECT * FROM {self.overrides_table} WHERE status = 'ACTIVE'"
+        df = self.spark.table(self.overrides_table).filter(F.col("status") == "ACTIVE")
 
         if master_entity_id:
-            query += f" AND master_entity_id = '{master_entity_id}'"
+            df = df.filter(F.col("master_entity_id") == master_entity_id)
 
-        return self.spark.sql(query)
+        return df
 
     def get_override_history(self, master_entity_id, field_name=None):
         """
         Get override history for an entity
         """
-        query = f"""
-        SELECT *
-        FROM {self.overrides_table}
-        WHERE master_entity_id = '{master_entity_id}'
-        """
+        df = self.spark.table(self.overrides_table).filter(
+            F.col("master_entity_id") == master_entity_id
+        )
 
         if field_name:
-            query += f" AND field_name = '{field_name}'"
+            df = df.filter(F.col("field_name") == field_name)
 
-        query += " ORDER BY override_at DESC"
-
-        return self.spark.sql(query)
+        return df.orderBy(F.col("override_at").desc())
 
     def _trigger_golden_record_refresh(self, master_entity_id):
         """
@@ -444,12 +480,10 @@ class SourcePriorityManager:
         """
         Get source priority configuration for entity type
         """
-        return self.spark.sql(f"""
-            SELECT source_system, priority_rank
-            FROM {self.priority_table}
-            WHERE entity_type = '{entity_type}'
-            ORDER BY priority_rank
-        """)
+        return (self.spark.table(self.priority_table)
+                .filter(F.col("entity_type") == entity_type)
+                .select("source_system", "priority_rank")
+                .orderBy("priority_rank"))
 
     def apply_priority(self, df, entity_type, field):
         """
@@ -461,8 +495,8 @@ class SourcePriorityManager:
         priority_map = {row['source_system']: row['priority_rank']
                         for row in priorities.collect()}
 
-        # Add priority rank column
-        df_with_priority = df
+        # Initialize priority rank column with default value
+        df_with_priority = df.withColumn("priority_rank", F.lit(999))
 
         for source, rank in priority_map.items():
             df_with_priority = df_with_priority.withColumn(

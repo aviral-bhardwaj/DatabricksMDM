@@ -96,8 +96,31 @@ class MDMSourceConnector:
                 instance_url=config.get('instance_url')
             )
 
-            # Query data
-            soql = config.get('soql_query', f"SELECT * FROM {config['object']}")
+            # Query data - use safe field-based query building
+            # Only allow soql_query if explicitly enabled, otherwise build from fields
+            if config.get('allow_custom_soql', False) and 'soql_query' in config:
+                soql = config['soql_query']
+                # Validate SOQL to prevent injection
+                self._validate_soql(soql)
+            else:
+                # Build safe SOQL from fields list
+                fields = config.get('fields', ['Id', 'Name'])
+                # Validate field names (alphanumeric, underscore, period only)
+                for field in fields:
+                    if not all(c.isalnum() or c in ('_', '.') for c in field):
+                        raise ValueError(f"Invalid field name: {field}")
+                fields_str = ', '.join(fields)
+                # Validate object name
+                obj = config['object']
+                if not obj.replace('_', '').isalnum():
+                    raise ValueError(f"Invalid object name: {obj}")
+                soql = f"SELECT {fields_str} FROM {obj}"
+                # Add WHERE clause if provided
+                if 'where_clause' in config:
+                    where = config['where_clause']
+                    # Basic validation - no SOQL injection patterns
+                    self._validate_soql_fragment(where)
+                    soql += f" WHERE {where}"
             data = sf.query_all(soql)
 
             # Convert to DataFrame
@@ -302,6 +325,48 @@ class MDMSourceConnector:
 
         return df
 
+    def _validate_soql(self, soql):
+        """
+        Validate SOQL query to prevent injection attacks
+        Checks for dangerous patterns and syntax
+        """
+        soql_upper = soql.upper()
+
+        # Check for dangerous keywords that shouldn't be in SOQL
+        dangerous_patterns = [
+            'DROP', 'DELETE', 'TRUNCATE', 'ALTER', 'CREATE',
+            'EXEC', 'EXECUTE', 'SCRIPT', '--', '/*', '*/',
+            'UNION', 'INSERT', 'UPDATE'
+        ]
+
+        for pattern in dangerous_patterns:
+            if pattern in soql_upper:
+                raise ValueError(f"SOQL query contains forbidden keyword: {pattern}")
+
+        # Must start with SELECT
+        if not soql_upper.strip().startswith('SELECT'):
+            raise ValueError("SOQL query must start with SELECT")
+
+        # Validate it contains FROM
+        if ' FROM ' not in soql_upper:
+            raise ValueError("SOQL query must contain FROM clause")
+
+    def _validate_soql_fragment(self, fragment):
+        """
+        Validate SOQL fragment (like WHERE clause) for injection
+        """
+        fragment_upper = fragment.upper()
+
+        # Check for dangerous patterns
+        dangerous_patterns = [
+            'DROP', 'DELETE', 'TRUNCATE', 'ALTER', 'CREATE',
+            'EXEC', 'EXECUTE', 'SCRIPT', '--', '/*', '*/'
+        ]
+
+        for pattern in dangerous_patterns:
+            if pattern in fragment_upper:
+                raise ValueError(f"SOQL fragment contains forbidden keyword: {pattern}")
+
 
 # COMMAND ----------
 
@@ -350,17 +415,18 @@ class RestAPIConnector(CustomConnectorBase):
         self.source_name = config.get('source_name', 'RestAPI')
         self.api_url = config['api_url']
         self.headers = config.get('headers', {})
+        self.timeout = config.get('timeout', (10, 30))  # (connect, read) timeout
 
     def connect(self):
         """Test API connection"""
-        response = requests.get(f"{self.api_url}/health", headers=self.headers)
+        response = requests.get(f"{self.api_url}/health", headers=self.headers, timeout=self.timeout)
         if response.status_code != 200:
             raise ConnectionError(f"Failed to connect to {self.api_url}")
 
     def extract(self):
         """Extract data from REST API"""
         endpoint = self.config['endpoint']
-        response = requests.get(f"{self.api_url}/{endpoint}", headers=self.headers)
+        response = requests.get(f"{self.api_url}/{endpoint}", headers=self.headers, timeout=self.timeout)
 
         if response.status_code == 200:
             return response.json()

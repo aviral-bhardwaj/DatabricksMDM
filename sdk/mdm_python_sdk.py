@@ -85,7 +85,8 @@ class MDMClient:
 
         response = self.session.post(
             f"{self.api_url}/api/v1/entities",
-            json=payload
+            json=payload,
+            timeout=self.timeout
         )
 
         response.raise_for_status()
@@ -102,7 +103,8 @@ class MDMClient:
             Golden record data
         """
         response = self.session.get(
-            f"{self.api_url}/api/v1/entities/{master_id}"
+            f"{self.api_url}/api/v1/entities/{master_id}",
+            timeout=self.timeout
         )
 
         response.raise_for_status()
@@ -128,7 +130,8 @@ class MDMClient:
 
         response = self.session.put(
             f"{self.api_url}/api/v1/entities/{master_id}",
-            json=payload
+            json=payload,
+            timeout=self.timeout
         )
 
         response.raise_for_status()
@@ -145,7 +148,8 @@ class MDMClient:
             Deletion status
         """
         response = self.session.delete(
-            f"{self.api_url}/api/v1/entities/{master_id}"
+            f"{self.api_url}/api/v1/entities/{master_id}",
+            timeout=self.timeout
         )
 
         response.raise_for_status()
@@ -175,7 +179,8 @@ class MDMClient:
 
         response = self.session.post(
             f"{self.api_url}/api/v1/entities/{master_id}/overrides",
-            json=payload
+            json=payload,
+            timeout=self.timeout
         )
 
         response.raise_for_status()
@@ -193,7 +198,8 @@ class MDMClient:
             Removal status
         """
         response = self.session.delete(
-            f"{self.api_url}/api/v1/entities/{master_id}/overrides/{field_name}"
+            f"{self.api_url}/api/v1/entities/{master_id}/overrides/{field_name}",
+            timeout=self.timeout
         )
 
         response.raise_for_status()
@@ -213,7 +219,8 @@ class MDMClient:
         """
         response = self.session.get(
             f"{self.api_url}/api/v1/matches/pending",
-            params={"limit": limit}
+            params={"limit": limit},
+            timeout=self.timeout
         )
 
         response.raise_for_status()
@@ -237,7 +244,8 @@ class MDMClient:
 
         response = self.session.post(
             f"{self.api_url}/api/v1/matches/{review_id}/review",
-            json=payload
+            json=payload,
+            timeout=self.timeout
         )
 
         response.raise_for_status()
@@ -261,7 +269,8 @@ class MDMClient:
 
         response = self.session.post(
             f"{self.api_url}/api/v1/matches/{review_id}/review",
-            json=payload
+            json=payload,
+            timeout=self.timeout
         )
 
         response.raise_for_status()
@@ -283,7 +292,8 @@ class MDMClient:
 
         response = self.session.get(
             f"{self.api_url}/api/v1/quality/scores",
-            params=params
+            params=params,
+            timeout=self.timeout
         )
 
         response.raise_for_status()
@@ -329,7 +339,8 @@ class MDMClient:
         """
         response = self.session.post(
             f"{self.api_url}/api/v1/quality/issues/{issue_id}/assign",
-            params={"assigned_to": assigned_to}
+            params={"assigned_to": assigned_to},
+            timeout=self.timeout
         )
 
         response.raise_for_status()
@@ -357,7 +368,8 @@ class MDMClient:
 
         response = self.session.get(
             f"{self.api_url}/api/v1/lineage/table/{table_name}",
-            params=params
+            params=params,
+            timeout=self.timeout
         )
 
         response.raise_for_status()
@@ -374,7 +386,8 @@ class MDMClient:
             Entity lineage
         """
         response = self.session.get(
-            f"{self.api_url}/api/v1/lineage/entity/{master_id}"
+            f"{self.api_url}/api/v1/lineage/entity/{master_id}",
+            timeout=self.timeout
         )
 
         response.raise_for_status()
@@ -397,7 +410,8 @@ class MDMClient:
 
         response = self.session.get(
             f"{self.api_url}/api/v1/audit/entity/{entity_id}",
-            params=params
+            params=params,
+            timeout=self.timeout
         )
 
         response.raise_for_status()
@@ -418,7 +432,8 @@ class MDMClient:
 
         response = self.session.get(
             f"{self.api_url}/api/v1/audit/user/{user_email}",
-            params=params
+            params=params,
+            timeout=self.timeout
         )
 
         response.raise_for_status()
@@ -447,7 +462,8 @@ class MDMClient:
 
         response = self.session.post(
             f"{self.api_url}/api/v1/webhooks/subscribe",
-            json=payload
+            json=payload,
+            timeout=self.timeout
         )
 
         response.raise_for_status()
@@ -464,7 +480,8 @@ class MDMClient:
             Unsubscribe status
         """
         response = self.session.delete(
-            f"{self.api_url}/api/v1/webhooks/{subscription_id}"
+            f"{self.api_url}/api/v1/webhooks/{subscription_id}",
+            timeout=self.timeout
         )
 
         response.raise_for_status()
@@ -478,7 +495,8 @@ class MDMClient:
             List of subscriptions
         """
         response = self.session.get(
-            f"{self.api_url}/api/v1/webhooks"
+            f"{self.api_url}/api/v1/webhooks",
+            timeout=self.timeout
         )
 
         response.raise_for_status()
@@ -493,7 +511,7 @@ class MDMClient:
         Returns:
             Health status
         """
-        response = self.session.get(f"{self.api_url}/health")
+        response = self.session.get(f"{self.api_url}/health", timeout=self.timeout)
         response.raise_for_status()
         return response.json()
 
