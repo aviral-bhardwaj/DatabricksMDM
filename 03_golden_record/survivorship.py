@@ -302,7 +302,8 @@ class ManualOverrideManager:
         override_df = self.spark.createDataFrame(override_data, schema)
 
         # Deactivate any existing ACTIVE override for this entity/field
-        try:
+        # Check table existence first to avoid masking other errors
+        if self.spark.catalog.tableExists(self.overrides_table):
             delta_table = DeltaTable.forName(self.spark, self.overrides_table)
             delta_table.update(
                 condition=(
@@ -312,9 +313,6 @@ class ManualOverrideManager:
                 ),
                 set={"status": F.lit("SUPERSEDED")}
             )
-        except Exception:
-            # Table may not exist yet - first override
-            pass
 
         # Append new override row
         override_df.write \
@@ -457,6 +455,7 @@ class AdvancedSurvivorshipRules:
         """
         Select value that appears in at least N sources (consensus)
         Broadcasts the selected value to all rows in the partition
+        Sets golden_{field} to null when no value meets the consensus threshold
         """
         window_count = Window.partitionBy(partition_col, field)
         window_rank = Window.partitionBy(partition_col).orderBy(F.desc("source_count"), F.col(field))
@@ -464,11 +463,13 @@ class AdvancedSurvivorshipRules:
 
         return (df.withColumn("source_count",
                               F.count(F.col("source_system")).over(window_count))
-                  .filter(F.col("source_count") >= min_agreement)
                   .withColumn("rank", F.row_number().over(window_rank))
                   .withColumn(f"golden_{field}",
                               F.first(
-                                  F.when(F.col("rank") == 1, F.col(field)),
+                                  F.when(
+                                      (F.col("rank") == 1) & (F.col("source_count") >= min_agreement),
+                                      F.col(field)
+                                  ),
                                   ignorenulls=True
                               ).over(partition_window))
                   .drop("source_count", "rank"))
@@ -524,11 +525,13 @@ class SourcePriorityManager:
         priority_df = self.spark.createDataFrame(priority_data, schema)
 
         # Use replaceWhere for partition-scoped overwrite to preserve other entity types
+        # Escape single quotes in entity_type for SQL safety
+        entity_type_escaped = entity_type.replace("'", "''")
         priority_df.write \
             .format("delta") \
             .mode("overwrite") \
             .option("mergeSchema", "true") \
-            .option("replaceWhere", f"entity_type = '{entity_type}'") \
+            .option("replaceWhere", f"entity_type = '{entity_type_escaped}'") \
             .partitionBy("entity_type") \
             .saveAsTable(self.priority_table)
 
