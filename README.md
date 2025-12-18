@@ -43,38 +43,42 @@ Databricks MDM is a comprehensive master data management solution providing mult
 
 ## Quick Start
 
+⚡ **New to MDM?** Follow our [Quick Start Guide](./QUICK_START.md) to get running in 15 minutes!
+
+📚 **Production Deployment?** See the complete [Deployment Guide](./DEPLOYMENT_GUIDE.md) for step-by-step instructions.
+
 ### Prerequisites
 - Databricks Workspace with Unity Catalog
 - Python 3.8+
 - Databricks CLI
 
-### Installation
+### 5-Minute Installation
 
 ```bash
-# Clone repository
+# 1. Install Databricks CLI
+curl -fsSL https://raw.githubusercontent.com/databricks/setup-cli/main/install.sh | sh
+
+# 2. Authenticate
+databricks auth login --host https://YOUR-WORKSPACE.cloud.databricks.com
+
+# 3. Clone repository
 git clone https://github.com/your-org/DatabricksMDM.git
 cd DatabricksMDM
 
-# Install dependencies
-pip install -r requirements.txt
+# 4. Create Unity Catalog resources
+databricks unity-catalog catalogs create mdm_catalog
+databricks unity-catalog schemas create mdm_catalog.bronze
+databricks unity-catalog schemas create mdm_catalog.silver
+databricks unity-catalog schemas create mdm_catalog.gold
 
-# Configure environment
-cp .env.template .env
-# Edit .env with your settings
-
-# Deploy to Databricks
+# 5. Deploy
 databricks bundle deploy --target dev
+
+# 6. Run your first pipeline
+databricks bundle run mdm_pipeline --target dev
 ```
 
-### Configuration
-
-Edit `config/mdm_config.yaml` to configure source connections, matching rules, and survivorship strategies.
-
-### Run MDM Pipeline
-
-```bash
-databricks bundle run mdm_pipeline
-```
+✅ **Done!** Check your data: `SELECT * FROM mdm_catalog.gold.customer_golden LIMIT 10;`
 
 ## Project Structure
 
