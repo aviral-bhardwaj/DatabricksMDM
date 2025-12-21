@@ -21,8 +21,8 @@ def create_mdm_workflow():
                     base_parameters={"entity_type": "customer"}
                 ),
                 new_cluster=jobs.ClusterSpec(
-                    spark_version="14.3.x-scala2.12",
-                    node_type_id="i3.xlarge",
+                    spark_version="17.3.x-scala2.13",
+                    node_type_id="r5d.large",
                     num_workers=2
                 )
             ),
@@ -36,9 +36,9 @@ def create_mdm_workflow():
                     base_parameters={"entity_type": "customer"}
                 ),
                 new_cluster=jobs.ClusterSpec(
-                    spark_version="14.3.x-scala2.12",
-                    node_type_id="i3.2xlarge",
-                    num_workers=4
+                    spark_version="17.3.x-scala2.13",
+                    node_type_id="r5d.large",
+                    num_workers=2
                 )
             ),
 
@@ -51,8 +51,8 @@ def create_mdm_workflow():
                     base_parameters={"entity_type": "customer"}
                 ),
                 new_cluster=jobs.ClusterSpec(
-                    spark_version="14.3.x-scala2.12",
-                    node_type_id="i3.xlarge",
+                    spark_version="17.3.x-scala2.13",
+                    node_type_id="r5d.large",
                     num_workers=2
                 )
             ),
@@ -66,9 +66,9 @@ def create_mdm_workflow():
                     base_parameters={"entity_type": "customer"}
                 ),
                 new_cluster=jobs.ClusterSpec(
-                    spark_version="14.3.x-scala2.12",
-                    node_type_id="i3.xlarge",
-                    num_workers=1
+                    spark_version="17.3.x-scala2.13",
+                    node_type_id="r5d.large",
+                    num_workers=2
                 )
             ),
 
@@ -81,9 +81,9 @@ def create_mdm_workflow():
                     base_parameters={"entity_type": "customer"}
                 ),
                 new_cluster=jobs.ClusterSpec(
-                    spark_version="14.3.x-scala2.12",
-                    node_type_id="i3.xlarge",
-                    num_workers=1
+                    spark_version="17.3.x-scala2.13",
+                    node_type_id="r5d.large",
+                    num_workers=2
                 )
             )
         ],

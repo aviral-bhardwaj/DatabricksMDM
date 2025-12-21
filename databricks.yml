@@ -15,8 +15,8 @@ resources:
             base_parameters:
               entity_type: customer
           new_cluster:
-            spark_version: 14.3.x-scala2.12
-            node_type_id: r3.xlarge
+            spark_version: 17.3.x-scala2.13
+            node_type_id: r5d.large
             num_workers: 2
             spark_conf:
               spark.databricks.delta.preview.enabled: "true"
@@ -30,9 +30,9 @@ resources:
             base_parameters:
               entity_type: customer
           new_cluster:
-            spark_version: 14.3.x-scala2.12
-            node_type_id: r3.xlarge
-            num_workers: 4
+            spark_version: 17.3.x-scala2.13
+            node_type_id: r5d.large
+            num_workers: 2
 
         - task_key: golden_records
           depends_on:
@@ -42,8 +42,8 @@ resources:
             base_parameters:
               entity_type: customer
           new_cluster:
-            spark_version: 14.3.x-scala2.12
-            node_type_id: r3.xlarge
+            spark_version: 17.3.x-scala2.13
+            node_type_id: r5d.large
             num_workers: 2
 
         - task_key: quality_checks
@@ -54,8 +54,8 @@ resources:
             base_parameters:
               entity_type: customer
           new_cluster:
-            spark_version: 14.3.x-scala2.12
-            node_type_id: r3.xlarge
+            spark_version: 17.3.x-scala2.13
+            node_type_id: r5d.large
             num_workers: 2
 
       schedule:
@@ -64,7 +64,7 @@ resources:
 
       email_notifications:
         on_failure:
-          - mdm-team@company.com
+          - ardb40@gmail.com
 
       max_concurrent_runs: 1
       timeout_seconds: 14400
@@ -72,12 +72,12 @@ resources:
   clusters:
     mdm_interactive_cluster:
       cluster_name: MDM_Interactive
-      spark_version: 14.3.x-scala2.12
-      node_type_id: r3.xlarge
+      spark_version: 17.3.x-scala2.13
+      node_type_id: r5d.large
       autoscale:
         min_workers: 1
-        max_workers: 8
-      autotermination_minutes: 120
+        max_workers: 2
+      autotermination_minutes: 10
 
 targets:
   dev:
