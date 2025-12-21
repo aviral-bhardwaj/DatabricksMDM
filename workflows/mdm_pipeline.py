@@ -6,7 +6,7 @@ from databricks.sdk.service import jobs
 
 def create_mdm_workflow():
     """
-    Create end-to-end MDM workflow
+    Create end-to-end MDM workflow for databricks
     """
     w = WorkspaceClient()
 
