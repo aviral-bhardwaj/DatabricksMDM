@@ -2,6 +2,18 @@
 bundle:
   name: databricks-mdm
 
+sync:
+  include:
+    - "01_ingestion/**"
+    - "02_matching/**"
+    - "03_golden_record/**"
+    - "04_quality/**"
+    - "05_catalog/**"
+    - "config/**"
+    - "sdk/**"
+    - "api/**"
+    - "workflows/**"
+
 resources:
   jobs:
     mdm_pipeline:
