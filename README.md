@@ -55,21 +55,25 @@ Databricks MDM is a comprehensive master data management solution providing mult
 ### 5-Minute Installation
 
 ```bash
-# 1. Install Databricks CLI
-curl -fsSL https://raw.githubusercontent.com/databricks/setup-cli/main/install.sh | sh
+# 0. Install Databricks CLI
+curl  https://raw.githubusercontent.com/databricks/setup-cli/main/install.sh 
+
+# 1. Check version
+databricks -v
 
 # 2. Authenticate
-databricks auth login --host https://YOUR-WORKSPACE.cloud.databricks.com
+databricks auth login --host <YOUR DATABRICKS HOSTNAME LIKE THIS  https://dbc-XXXXXXX-fa92.cloud.databricks.com>
 
 # 3. Clone repository
-git clone https://github.com/your-org/DatabricksMDM.git
-cd DatabricksMDM
+git clone https://github.com/aviral-bhardwaj/DatabricksMDM.git
 
-# 4. Create Unity Catalog resources
-databricks unity-catalog catalogs create mdm_catalog
-databricks unity-catalog schemas create mdm_catalog.bronze
-databricks unity-catalog schemas create mdm_catalog.silver
-databricks unity-catalog schemas create mdm_catalog.gold
+# 4. Create catalog with storage root (ONLY way that worked)
+databricks catalogs create mdm_catalog -t dev --storage-root "YOUR STORAGE LOCATION LIKE THIS s3://databricks-xxxxxxx/unity-catalog/XXXXXXX "
+
+# 5. Create schemas - THE KEY SYNTAX (NAME then CATALOG_NAME, then -t TARGET)
+databricks schemas create bronze mdm_catalog -t dev
+databricks schemas create silver mdm_catalog -t dev
+databricks schemas create gold mdm_catalog -t dev
 
 # 5. Deploy
 databricks bundle deploy --target dev
