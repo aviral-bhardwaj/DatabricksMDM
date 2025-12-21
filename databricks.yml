@@ -23,7 +23,7 @@ resources:
       tasks:
         - task_key: ingest_sources
           notebook_task:
-            notebook_path: ./01_ingestion/multi_source_connector.py
+            notebook_path: ${workspace.file_path}/01_ingestion/multi_source_connector.py
             base_parameters:
               entity_type: customer
           new_cluster:
@@ -38,7 +38,7 @@ resources:
           depends_on:
             - task_key: ingest_sources
           notebook_task:
-            notebook_path: ./02_matching/entity_resolution.py
+            notebook_path: ${workspace.file_path}/02_matching/entity_resolution.py
             base_parameters:
               entity_type: customer
           new_cluster:
@@ -50,7 +50,7 @@ resources:
           depends_on:
             - task_key: entity_matching
           notebook_task:
-            notebook_path: ./03_golden_record/survivorship.py
+            notebook_path: ${workspace.file_path}/03_golden_record/survivorship.py
             base_parameters:
               entity_type: customer
           new_cluster:
@@ -62,7 +62,7 @@ resources:
           depends_on:
             - task_key: golden_records
           notebook_task:
-            notebook_path: ./04_quality/dq_framework.py
+            notebook_path: ${workspace.file_path}/04_quality/dq_framework.py
             base_parameters:
               entity_type: customer
           new_cluster:
