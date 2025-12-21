@@ -31,7 +31,7 @@ resources:
               entity_type: customer
           new_cluster:
             spark_version: 14.3.x-scala2.12
-            node_type_id: Standard_DS4_v2
+            node_type_id: r3.xlarge
             num_workers: 4
 
         - task_key: golden_records
