@@ -11,7 +11,7 @@ resources:
       tasks:
         - task_key: ingest_sources
           notebook_task:
-            notebook_path: ./notebooks/01_ingestion/run_ingestion
+            notebook_path: ./notebooks/01_ingestion/multi_source_connector.py
             base_parameters:
               entity_type: customer
           new_cluster:
@@ -26,7 +26,7 @@ resources:
           depends_on:
             - task_key: ingest_sources
           notebook_task:
-            notebook_path: ./notebooks/02_matching/run_matching
+            notebook_path: ./notebooks/02_matching/entity_resolution.py
             base_parameters:
               entity_type: customer
           new_cluster:
@@ -38,7 +38,7 @@ resources:
           depends_on:
             - task_key: entity_matching
           notebook_task:
-            notebook_path: ./notebooks/03_golden_record/run_golden
+            notebook_path: ./notebooks/03_golden_record/survivorship.py
             base_parameters:
               entity_type: customer
           new_cluster:
@@ -83,11 +83,11 @@ targets:
   dev:
     mode: development
     workspace:
-      host: https://your-workspace.cloud.databricks.com
+      host: https://dbc-bd6bd71d-fa92.cloud.databricks.com
 
   prod:
     mode: production
     workspace:
-      host: https://your-workspace.cloud.databricks.com
+      host: https://dbc-bd6bd71d-fa92.cloud.databricks.com
     run_as:
       service_principal_name: mdm-service-principal

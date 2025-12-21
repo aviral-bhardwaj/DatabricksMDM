@@ -17,7 +17,7 @@ def create_mdm_workflow():
             jobs.Task(
                 task_key="ingest_sources",
                 notebook_task=jobs.NotebookTask(
-                    notebook_path="/Workspace/mdm/01_ingestion/run_ingestion",
+                    notebook_path="/Workspace/mdm/01_ingestion/multi_source_connector.py",
                     base_parameters={"entity_type": "customer"}
                 ),
                 new_cluster=jobs.ClusterSpec(
@@ -32,7 +32,7 @@ def create_mdm_workflow():
                 task_key="entity_matching",
                 depends_on=[jobs.TaskDependency(task_key="ingest_sources")],
                 notebook_task=jobs.NotebookTask(
-                    notebook_path="/Workspace/mdm/02_matching/run_matching",
+                    notebook_path="/Workspace/mdm/02_matching/entity_resolution.py",
                     base_parameters={"entity_type": "customer"}
                 ),
                 new_cluster=jobs.ClusterSpec(
@@ -47,7 +47,7 @@ def create_mdm_workflow():
                 task_key="golden_records",
                 depends_on=[jobs.TaskDependency(task_key="entity_matching")],
                 notebook_task=jobs.NotebookTask(
-                    notebook_path="/Workspace/mdm/03_golden_record/build_golden",
+                    notebook_path="/Workspace/mdm/03_golden_record/survivorship.py",
                     base_parameters={"entity_type": "customer"}
                 ),
                 new_cluster=jobs.ClusterSpec(
@@ -62,7 +62,7 @@ def create_mdm_workflow():
                 task_key="quality_checks",
                 depends_on=[jobs.TaskDependency(task_key="golden_records")],
                 notebook_task=jobs.NotebookTask(
-                    notebook_path="/Workspace/mdm/04_quality/run_dq",
+                    notebook_path="/Workspace/mdm/04_quality/dq_framework.py",
                     base_parameters={"entity_type": "customer"}
                 ),
                 new_cluster=jobs.ClusterSpec(
@@ -77,7 +77,7 @@ def create_mdm_workflow():
                 task_key="publish_downstream",
                 depends_on=[jobs.TaskDependency(task_key="quality_checks")],
                 notebook_task=jobs.NotebookTask(
-                    notebook_path="/Workspace/mdm/05_publish/publish_golden",
+                    notebook_path="/Workspace/mdm/05_catalog/unity_catalog_integration.py",
                     base_parameters={"entity_type": "customer"}
                 ),
                 new_cluster=jobs.ClusterSpec(
