@@ -321,7 +321,7 @@ databricks bundle run mdm_cluster -t dev
 # Or create manually via UI:
 # - Cluster name: mdm-cluster
 # - Databricks Runtime: 13.3 LTS or higher
-# - Worker type: Standard_DS3_v2 (or equivalent)
+# - Worker type: r3.xlarge (or equivalent)
 # - Min workers: 2, Max workers: 8
 # - Enable autoscaling
 ```
@@ -331,7 +331,7 @@ databricks bundle run mdm_cluster -t dev
 {
   "cluster_name": "mdm-cluster",
   "spark_version": "13.3.x-scala2.12",
-  "node_type_id": "Standard_DS3_v2",
+  "node_type_id": "r3.xlarge",
   "autoscale": {
     "min_workers": 2,
     "max_workers": 8

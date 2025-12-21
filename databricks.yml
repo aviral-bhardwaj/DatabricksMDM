@@ -16,7 +16,7 @@ resources:
               entity_type: customer
           new_cluster:
             spark_version: 14.3.x-scala2.12
-            node_type_id: Standard_DS3_v2
+            node_type_id: r3.xlarge
             num_workers: 2
             spark_conf:
               spark.databricks.delta.preview.enabled: "true"
@@ -43,7 +43,7 @@ resources:
               entity_type: customer
           new_cluster:
             spark_version: 14.3.x-scala2.12
-            node_type_id: Standard_DS3_v2
+            node_type_id: r3.xlarge
             num_workers: 2
 
         - task_key: quality_checks
@@ -55,7 +55,7 @@ resources:
               entity_type: customer
           new_cluster:
             spark_version: 14.3.x-scala2.12
-            node_type_id: Standard_DS3_v2
+            node_type_id: r3.xlarge
             num_workers: 2
 
       schedule:
@@ -73,7 +73,7 @@ resources:
     mdm_interactive_cluster:
       cluster_name: MDM_Interactive
       spark_version: 14.3.x-scala2.12
-      node_type_id: Standard_DS3_v2
+      node_type_id: r3.xlarge
       autoscale:
         min_workers: 1
         max_workers: 8
