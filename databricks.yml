@@ -1,92 +1,121 @@
-# Databricks Asset Bundle configuration
+# Databricks Asset Bundle — Databricks-native MDM engine (v2).
+#
+# Drives the new /mdm package: a DLT pipeline standardizes Bronze -> Silver, and
+# a Workflows job orchestrates ingest -> (DLT) standardize -> match/cluster/master
+# -> publish. The legacy v1 notebooks remain runnable under legacy/ (see the
+# `mdm_legacy_pipeline` job) but are no longer the default.
 bundle:
   name: databricks-mdm
 
-resources:
-  jobs:
-    mdm_pipeline:
-      name: MDM_End_to_End_Pipeline
-      description: Complete MDM pipeline for multi-source master data management
+variables:
+  catalog:
+    description: Unity Catalog for MDM (per-environment).
+    default: mdm_dev
+  domain:
+    description: MDM domain to process.
+    default: customer
+  config_path:
+    description: Workspace path to the domain config YAML.
+    default: /Workspace/Repos/databricks-mdm/conf/domains/customer.yml
 
-      tasks:
-        - task_key: ingest_sources
-          notebook_task:
-            notebook_path: ./01_ingestion/multi_source_connector.py
-            base_parameters:
-              entity_type: customer
+resources:
+  # ----- DLT: Bronze -> Silver standardization + quality (declarative) ----- #
+  pipelines:
+    mdm_silver_standardize:
+      name: MDM_Silver_Standardize_${var.domain}
+      catalog: ${var.catalog}
+      target: ${var.domain}_silver
+      development: true
+      libraries:
+        - file:
+            path: ./mdm/pipelines/silver_standardize.py
+      configuration:
+        mdm.domain: ${var.domain}
+        mdm.config_path: ${var.config_path}
+
+  # ----- Workflows: end-to-end native MDM pipeline ------------------------- #
+  jobs:
+    mdm_native_pipeline:
+      name: MDM_Native_Pipeline_${var.domain}
+      description: Native MDM — ingest, standardize (DLT), match/cluster/master, publish.
+
+      job_clusters:
+        - job_cluster_key: mdm_job_cluster
           new_cluster:
-            spark_version: 17.3.x-scala2.13
+            spark_version: 15.4.x-scala2.12
             node_type_id: r5d.large
             num_workers: 2
             spark_conf:
-              spark.databricks.delta.preview.enabled: "true"
               spark.databricks.delta.optimizeWrite.enabled: "true"
 
-        - task_key: entity_matching
-          depends_on:
-            - task_key: ingest_sources
-          notebook_task:
-            notebook_path: ./02_matching/entity_resolution.py
-            base_parameters:
-              entity_type: customer
-          new_cluster:
-            spark_version: 17.3.x-scala2.13
-            node_type_id: r5d.large
-            num_workers: 2
+      tasks:
+        - task_key: ingest_bronze
+          job_cluster_key: mdm_job_cluster
+          spark_python_task:
+            python_file: ./mdm/pipelines/bronze_ingest.py
+            parameters: ["${var.catalog}", "${var.domain}",
+                         "/Volumes/${var.catalog}/${var.domain}_bronze/landing",
+                         "sap", "json"]
 
-        - task_key: golden_records
+        - task_key: standardize_silver
           depends_on:
-            - task_key: entity_matching
-          notebook_task:
-            notebook_path: ./03_golden_record/survivorship.py
-            base_parameters:
-              entity_type: customer
-          new_cluster:
-            spark_version: 17.3.x-scala2.13
-            node_type_id: r5d.large
-            num_workers: 2
+            - task_key: ingest_bronze
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.mdm_silver_standardize.id}
 
-        - task_key: quality_checks
+        - task_key: match_cluster_master
           depends_on:
-            - task_key: golden_records
-          notebook_task:
-            notebook_path: ./04_quality/dq_framework.py
-            base_parameters:
-              entity_type: customer
-          new_cluster:
-            spark_version: 17.3.x-scala2.13
-            node_type_id: r5d.large
-            num_workers: 2
+            - task_key: standardize_silver
+          job_cluster_key: mdm_job_cluster
+          spark_python_task:
+            python_file: ./mdm/pipelines/match_cluster.py
+            parameters: ["${var.catalog}", "${var.domain}", "${var.config_path}"]
+
+        - task_key: publish
+          depends_on:
+            - task_key: match_cluster_master
+          job_cluster_key: mdm_job_cluster
+          spark_python_task:
+            python_file: ./mdm/pipelines/master_publish.py
+            parameters: ["${var.catalog}", "${var.domain}", "0"]
 
       schedule:
         quartz_cron_expression: "0 0 2 * * ?"
         timezone_id: "UTC"
-
       email_notifications:
         on_failure:
           - ardb40@gmail.com
-
       max_concurrent_runs: 1
       timeout_seconds: 14400
 
-  clusters:
-    mdm_interactive_cluster:
-      cluster_name: MDM_Interactive
-      spark_version: 17.3.x-scala2.13
-      node_type_id: r5d.large
-      autoscale:
-        min_workers: 1
-        max_workers: 2
-      autotermination_minutes: 10
+    # ----- Legacy v1 pipeline (kept for reference / migration) ------------- #
+    mdm_legacy_pipeline:
+      name: MDM_Legacy_Pipeline
+      description: Superseded v1 notebooks under legacy/. Not scheduled.
+      tasks:
+        - task_key: legacy_ingest
+          notebook_task:
+            notebook_path: ./legacy/01_ingestion/multi_source_connector.py
+            base_parameters:
+              entity_type: customer
+          new_cluster:
+            spark_version: 15.4.x-scala2.12
+            node_type_id: r5d.large
+            num_workers: 2
 
 targets:
   dev:
     mode: development
+    default: true
+    variables:
+      catalog: mdm_dev
     workspace:
       host: https://dbc-bd6bd71d-fa92.cloud.databricks.com
 
   prod:
     mode: production
+    variables:
+      catalog: mdm_prod
     workspace:
       host: https://dbc-bd6bd71d-fa92.cloud.databricks.com
     run_as:

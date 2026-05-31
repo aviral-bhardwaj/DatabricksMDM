@@ -1,149 +1,93 @@
-# Databricks MDM (Master Data Management)
+# Databricks-Native MDM
 
-Enterprise-grade Master Data Management solution built on Databricks platform with Unity Catalog integration.
+A **truly Databricks-native** Master Data Management engine — the golden record is
+a governed Delta table, identity resolution and survivorship are declarative
+lakehouse pipelines, and all the domain logic is a pure, unit-tested Python core
+with **no Spark coupling**. Built with SOLID + DDD, governed by Unity Catalog.
 
-> 📐 **Architecture Blueprint:** A deep, opinionated, SOLID-based blueprint for building a *truly Databricks-native* MDM product (market research, anti-patterns, layer→service mapping, domain model, roadmap) is published as a static website under [`/docs`](docs/). It is served via **GitHub Pages** (`main` branch `/docs` folder) at **https://aviral-bhardwaj.github.io/databricksmdm/** once merged to `main`.
+> 📐 **Architecture Blueprint:** the opinionated, SOLID-based design behind this
+> engine (market research, anti-patterns, layer→service mapping, domain model,
+> roadmap) is published as a website under [`/docs`](docs/), served via **GitHub
+> Pages** at **https://aviral-bhardwaj.github.io/databricksmdm/** (after merge to
+> `main`).
 
-## Overview
+---
 
-Databricks MDM is a comprehensive master data management solution providing multi-source integration, intelligent entity matching, golden record management, data quality monitoring, and full audit capabilities.
+## Why v2 (and what changed)
 
-## Features
+The previous implementation (now under [`legacy/`](legacy/)) was *traditional MDM
+transplanted onto Databricks* — the anti-pattern the blueprint warns against. v2
+rebuilds it natively. See [`legacy/README.md`](legacy/README.md) for the full
+before/after, including the **SQL-injection fixes** and the **broken-clustering
+fix**.
 
-### ✅ Multi-Source Integration Hub
-- Pre-built connectors: SAP, Salesforce, Oracle, Odoo
-- Custom connector framework
-- Real-time streaming (Kafka/Kinesis) and batch ingestion
+| | Legacy v1 | Native v2 (`/mdm`) |
+|---|---|---|
+| Domain logic | welded to Spark, untestable offline | pure `mdm/core`, 33 tests run in 0.1s on pandas |
+| Matching | one hardcoded Random Forest | pluggable strategy registry: deterministic / probabilistic / **semantic (vector)** |
+| Blocking | hardcoded to `country` | config-driven keys |
+| Clustering | `monotonically_increasing_id` (non-transitive **bug**) | union-find connected components |
+| Quality | customer-only `if/elif` | config-driven rules, any domain |
+| Survivorship | Spark-coupled | rules-as-data evaluators (+ `TRUST_DECAY`) |
+| Governance/SQL | string-interpolated (**injectable**) | parameterized + identifier-validated |
+| New domain | code fork | a YAML file |
 
-### ✅ Intelligent Entity Matching
-- ML-powered fuzzy matching with Random Forest
-- Configurable matching rules
-- Manual match review UI
-- Auto-merge with configurable thresholds
+## Architecture — three strictly separated zones
 
-### ✅ Golden Record Management
-- Configurable survivorship rules (Most Recent, Source Priority, Most Complete, etc.)
-- Source prioritization
-- Manual override capability with full audit trail
+```
+mdm/core      PURE DOMAIN   no pyspark anywhere (enforced by tests/test_purity.py)
+              model · ports · standardize · quality · matching · cluster ·
+              mastering(survivorship) · stewardship · service
+mdm/runtime   INFRASTRUCTURE  the ONLY zone importing pyspark/delta/SDK
+              repository_delta · sources · adapters · uc · vector · observability
+              (+ repository_memory & encoders that need no cluster)
+mdm/pipelines ORCHESTRATION  declarative Lakeflow/DLT + Workflows; owns no rules
+              bronze_ingest · silver_standardize(DLT) · match_cluster · master_publish
+```
 
-### ✅ Data Quality Dashboard
-- Real-time DQ metrics
-- Quality score tracking (Gold/Silver/Bronze)
-- Issue remediation workflows
-- Automated alerts
+The dependency rule points one way — `pipelines → runtime → core` — so the same
+match/survivorship logic runs **identically** in a 0.1s local test and on a
+billion rows on a cluster. That is Dependency Inversion made real.
 
-### ✅ Master Data Catalog
-- Unity Catalog integration
-- Full data lineage tracking
-- Change history and audit trail
-- PII/sensitive data tagging
-
-### ✅ API & SDK
-- Complete RESTful API
-- Python SDK
-- Webhook support for real-time events
-
-## Quick Start
-
-⚡ **New to MDM?** Follow our [Quick Start Guide](./QUICK_START.md) to get running in 15 minutes!
-
-📚 **Production Deployment?** See the complete [Deployment Guide](./DEPLOYMENT_GUIDE.md) for step-by-step instructions.
-
-### Prerequisites
-- Databricks Workspace with Unity Catalog
-- Python 3.8+
-- Databricks CLI
-
-### 5-Minute Installation
+## Run it locally (no Databricks required)
 
 ```bash
-# 0. Install Databricks CLI
-curl  https://raw.githubusercontent.com/databricks/setup-cli/main/install.sh 
+pip install -e ".[dev]"
 
-# 1. Check version
-databricks -v
-
-# 2. Authenticate
-databricks auth login --host <YOUR DATABRICKS HOSTNAME LIKE THIS  https://dbc-XXXXXXX-fa92.cloud.databricks.com>
-
-# 3. Clone repository
-git clone https://github.com/aviral-bhardwaj/DatabricksMDM.git
-
-# 4. Create catalog with storage root (ONLY way that worked)
-databricks catalogs create mdm_catalog -t dev --storage-root "YOUR STORAGE LOCATION LIKE THIS s3://databricks-xxxxxxx/unity-catalog/XXXXXXX "
-
-# 5. Create schemas - THE KEY SYNTAX (NAME then CATALOG_NAME, then -t TARGET)
-databricks schemas create bronze mdm_catalog -t dev
-databricks schemas create silver mdm_catalog -t dev
-databricks schemas create gold mdm_catalog -t dev
-
-# 5. Deploy
-databricks bundle deploy --target dev
-
-# 6. Run your first pipeline
-databricks bundle run mdm_pipeline --target dev
+pytest                 # 33 tests, pure-domain, ~0.1s
+python -m mdm demo     # end-to-end on bundled multi-source sample data
 ```
 
-✅ **Done!** Check your data: `SELECT * FROM mdm_catalog.gold.customer_golden LIMIT 10;`
+The demo resolves 16 records across SAP / Salesforce / Oracle / Odoo into 7 golden
+records (56% dedup), applying config-driven matching and survivorship with full
+per-attribute provenance — all on pandas, proving the engine works without a cluster.
 
-## Project Structure
+## Deploy to Databricks
 
-```
-DatabricksMDM/
-├── 01_ingestion/          # Multi-source connectors
-├── 02_matching/           # Entity resolution & ML matching
-├── 03_golden_record/      # Survivorship rules & overrides
-├── 04_quality/            # Data quality framework
-├── 05_catalog/            # Unity Catalog & lineage
-├── api/                   # RESTful API
-├── sdk/                   # Python SDK
-├── workflows/             # Databricks workflows
-├── config/                # Configuration
-├── requirements.txt
-├── databricks.yml
-└── README.md
+```bash
+databricks bundle validate --target dev
+databricks bundle deploy   --target dev
+databricks bundle run mdm_native_pipeline --target dev
 ```
 
-## API Usage
+The bundle ([`databricks.yml`](databricks.yml)) wires Auto Loader → Bronze, a DLT
+pipeline for Silver standardization + quality expectations, a match/cluster/master
+job, and zero-copy publish via Change Data Feed. Multi-domain via `--var domain=…`
+(configs in [`conf/domains/`](conf/domains/): customer, product, supplier, location).
 
-```python
-from sdk.mdm_python_sdk import MDMClient
+## Repository layout
 
-client = MDMClient(
-    api_url="https://your-api.com",
-    api_key="your-key"
-)
-
-# Search entities
-results = client.search_entities(
-    entity_type="customer",
-    search_criteria={"email": "john@example.com"}
-)
-
-# Create override
-client.create_override(
-    master_id="MDM_123",
-    field_name="email",
-    override_value="new@example.com",
-    reason="Customer request"
-)
 ```
-
-## Databricks Deployment
-
-This repository is ready to import into Databricks:
-
-1. **Import via Git**: Use Databricks Repos to import this repository
-2. **Run Notebooks**: All Python files are formatted as Databricks notebooks
-3. **Execute Workflows**: Use `workflows/mdm_pipeline.py` to create jobs
-4. **Unity Catalog**: Automatically creates `mdm_catalog` with proper schemas
-
-## Support
-
-- Documentation: See inline code comments
-- Issues: Create GitHub issue
-- Email: mdm-support@your-company.com
+mdm/                 native engine (core / runtime / pipelines / cli)
+conf/domains/        per-domain configuration (a domain is data, not code)
+data/sample/         multi-source sample CSVs for the demo
+tests/               pure-domain unit + contract + purity tests
+docs/                architecture blueprint website (GitHub Pages)
+legacy/              superseded v1 (notebooks, api, sdk) — see legacy/README.md
+databricks.yml       Asset Bundle (native pipeline + legacy job)
+pyproject.toml       installable package `mdm`, extras [spark] [dev] [demo]
+```
 
 ## License
 
-Proprietary - All rights reserved
+Proprietary — All rights reserved.

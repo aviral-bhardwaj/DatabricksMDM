@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "databricks-mdm"
+version = "2.0.0"
+description = "Databricks-native Master Data Management engine (lakehouse-resident, SOLID, config-driven)."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "Apache-2.0" }
+authors = [{ name = "Databricks MDM" }]
+dependencies = [
+    "pyyaml>=6.0",
+]
+
+# The pure domain core (mdm.core) depends ONLY on the standard library + the
+# tiny deps above. Spark/Delta live behind the [spark] extra so the core stays
+# unit-testable on pandas without a cluster.
+[project.optional-dependencies]
+spark = [
+    "pyspark>=3.5.0",
+    "delta-spark>=3.0.0",
+    "databricks-sdk>=0.18.0",
+]
+demo = [
+    "pandas>=2.0.0",
+]
+dev = [
+    "pytest>=7.4",
+    "pandas>=2.0.0",
+]
+
+[project.scripts]
+mdm = "mdm.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["mdm*"]
+exclude = ["legacy*", "Databricks_MDM*", "tests*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

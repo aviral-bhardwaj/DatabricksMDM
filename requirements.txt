@@ -1,28 +1,41 @@
-databricks-sdk>=0.18.0
+# Databricks-native MDM — dependencies.
+#
+# The pure domain core (mdm/core) needs ONLY the standard library + pyyaml, so it
+# unit-tests on pandas with no cluster. Everything below the first block is for
+# the Spark runtime, pipelines, connectors, and the legacy v1 modules.
+#
+# Prefer `pip install -e ".[dev]"` (see pyproject.toml) for local development.
+
+# --- core (pure domain) ---
+pyyaml>=6.0
+
+# --- spark runtime + pipelines (Databricks) ---
 pyspark>=3.5.0
 delta-spark>=3.0.0
+databricks-sdk>=0.18.0
+
+# --- local demo / tests ---
+pandas>=2.0.0
+pytest>=7.4
+
+# --- connectors + legacy v1 modules (optional on Databricks) ---
 great-expectations>=1.10.0
-fastapi>=0.110.0
-uvicorn>=0.27.0
-pydantic>=2.0.0
 jellyfish>=1.0.0
 scikit-learn>=1.3.0
 mlflow>=3.0.0
 requests>=2.31.0
 python-dotenv>=1.0.0
-pandas>=2.0.0
 numpy>=1.24.0
+kafka-python>=2.0.2
+boto3>=1.34.0
+oracledb>=2.0.0
+simple-salesforce>=1.12.0
+xmltodict>=0.13.0
+
+# --- legacy v1 REST API (under legacy/api) ---
+fastapi>=0.110.0
+uvicorn>=0.27.0
+pydantic>=2.0.0
 python-jose[cryptography]>=3.4.0
 passlib>=1.7.4
 python-multipart>=0.0.18
-aiohttp>=3.10.11
-websockets>=12.0
-kafka-python>=2.0.2
-boto3>=1.34.0
-azure-storage-blob>=12.19.0
-google-cloud-storage>=2.14.0
-oracledb>=2.0.0
-pyodbc>=5.0.0
-salesforce-bulk>=2.2.0
-simple-salesforce>=1.12.0
-xmltodict>=0.13.0

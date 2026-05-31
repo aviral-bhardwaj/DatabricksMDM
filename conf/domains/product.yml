@@ -1,0 +1,55 @@
+# Product (PIM-style) domain — identity blends a strong key (GTIN) with semantic
+# similarity over descriptions (the native AI lever). Semantic strategy uses an
+# injected encoder (HashingEncoder locally, Vector Search in production).
+domain: product
+
+entity_attributes: [name, gtin, brand, description, category]
+
+field_map:
+  sap:
+    MATNR: source_pk
+    MAKTX: name
+    EAN11: gtin
+    BRAND: brand
+    DESCRIPTION: description
+    MATKL: category
+  odoo:
+    id: source_pk
+    name: name
+    barcode: gtin
+    brand: brand
+    description_sale: description
+    categ_id: category
+
+standardization:
+  name: [text]
+  gtin: [text]
+  brand: [name]
+  description: [text]
+  category: [text]
+
+quality_rules:
+  - { field: name, kind: not_null, weight: 2 }
+  - { field: gtin, kind: regex, pattern: "^[0-9]{8,14}$", weight: 1 }
+
+blocking:
+  - { fields: [gtin] }
+  - { fields: [brand], prefix: 4 }
+
+match_strategies:
+  - { kind: deterministic, id: gtin_exact, keys: [gtin] }
+  - kind: probabilistic
+    comparators:
+      - { field: name, method: jaro_winkler, weight: 2 }
+      - { field: brand, method: jaro_winkler, weight: 1 }
+  - { kind: semantic, id: desc_semantic, fields: [name, description] }
+
+merge_threshold: 0.9
+review_low: 0.78
+
+survivorship:
+  name:        { strategy: LONGEST }
+  gtin:        { strategy: MOST_FREQUENT }
+  brand:       { strategy: SOURCE_PRIORITY, priority: { sap: 1, odoo: 2 } }
+  description: { strategy: LONGEST }
+  category:    { strategy: MOST_FREQUENT }
