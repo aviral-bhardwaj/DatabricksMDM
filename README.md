@@ -2,6 +2,8 @@
 
 Enterprise-grade Master Data Management solution built on Databricks platform with Unity Catalog integration.
 
+> 📐 **Architecture Blueprint:** A deep, opinionated, SOLID-based blueprint for building a *truly Databricks-native* MDM product (market research, anti-patterns, layer→service mapping, domain model, roadmap) is published as a static website under [`/docs`](docs/). It is served via **GitHub Pages** (`main` branch `/docs` folder) at **https://aviral-bhardwaj.github.io/databricksmdm/** once merged to `main`.
+
 ## Overview
 
 Databricks MDM is a comprehensive master data management solution providing multi-source integration, intelligent entity matching, golden record management, data quality monitoring, and full audit capabilities.

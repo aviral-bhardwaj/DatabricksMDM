@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>B · Market Landscape — Databricks-Native MDM</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<header class="topbar">
+  <button class="nav-toggle" aria-label="Menu">☰</button>
+  <a class="brand" href="index.html"><span class="dot"></span> Databricks-Native MDM</a>
+  <span class="tag">Architecture Blueprint</span>
+  <span class="spacer"></span>
+  <a class="gh" href="https://github.com/aviral-bhardwaj/databricksmdm">GitHub ↗</a>
+</header>
+
+<div class="layout">
+  <aside class="sidebar" id="sidebar">
+    <h4>Blueprint</h4>
+    <a href="index.html"><span class="lt">A</span> Executive Summary</a>
+    <a href="market.html"><span class="lt">B</span> Market Landscape</a>
+    <a href="native.html"><span class="lt">C</span> What "Native" Requires</a>
+    <a href="solid.html"><span class="lt">D</span> SOLID Architecture</a>
+    <a href="domain.html"><span class="lt">E</span> Domain &amp; Contexts</a>
+    <a href="blueprint.html"><span class="lt">F</span> Implementation</a>
+    <a href="risks.html"><span class="lt">G</span> Risks &amp; Edge</a>
+    <a href="roadmap.html"><span class="lt">H</span> Roadmap</a>
+  </aside>
+
+  <main class="content">
+    <div class="eyebrow">B · Market &amp; Competitor Research</div>
+    <h1>The MDM landscape, read through a lakehouse lens</h1>
+    <p class="lead">Six incumbents define the category. Two insurgents (LakeFusion, Zingg) prove the lakehouse-native thesis is already commercial. Below: a per-vendor teardown, a comparison matrix, and the product lessons — what to copy, avoid, and redesign.</p>
+
+    <h2>The four archetypes first</h2>
+    <p>Before the vendors, fix the taxonomy. Every product below sits in one of four tiers, and the tier predicts its weaknesses for a Databricks-first buyer more than the brand does.</p>
+    <div class="tablewrap">
+    <table>
+      <thead><tr><th>Tier</th><th>Topology</th><th>Where the golden record lives</th><th>Examples</th></tr></thead>
+      <tbody>
+        <tr><td><strong>1 · Legacy on-prem hub</strong></td><td>Monolithic registry/repository, app-server + RDBMS</td><td>Proprietary relational store</td><td>Informatica MDM (classic), SAP MDG</td></tr>
+        <tr><td><strong>2 · Cloud / SaaS hub</strong></td><td>Multi-tenant microservices, vendor-operated</td><td>Vendor's cloud (opaque to you)</td><td>Reltio, Informatica IDMC, Profisee Cloud</td></tr>
+        <tr><td><strong>3 · MDM integrated <em>with</em> Databricks</strong></td><td>External hub + Spark/Delta connectors</td><td>Still the hub; Delta is a staging copy</td><td>Semarchy/Ataccama/Reltio + connectors</td></tr>
+        <tr><td class="y"><strong>4 · MDM built <em>natively</em> in the lakehouse</strong></td><td>Declarative pipelines over Delta, UC-governed</td><td>A governed Delta table in <em>your</em> catalog</td><td>LakeFusion, Zingg (OSS engine), this blueprint</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <div class="diagram-cap">Tier 3 is the trap: it looks like Databricks adoption but the master still lives in a closed hub.</div>
+
+    <h2>Per-vendor teardown</h2>
+
+    <h3>Informatica MDM (+ IDMC / CLAIRE)</h3>
+    <ul>
+      <li><strong>Architecture:</strong> Mature multidomain hub. Classic on-prem (Hub Store on Oracle/SQL Server, ActiveVOS workflow) migrating to the IDMC cloud platform. CLAIRE is the cross-product AI/ML engine for matching, classification, and automation.</li>
+      <li><strong>Strengths:</strong> Deepest feature surface in the market — match rules, trust framework, hierarchies, reference data (RDM), B2B/B2C, healthcare/pharma accelerators. Enormous connector library. The "nobody got fired for buying it" option.</li>
+      <li><strong>Governance:</strong> Its own security/role model, ActiveVOS BPM, audit inside the hub. Powerful but a parallel governance universe to Unity Catalog.</li>
+      <li><strong>Stewardship UX:</strong> Mature but heavyweight; the Data Director / IDMC stewardship UI is feature-rich and dated.</li>
+      <li><strong>Entity resolution:</strong> Deterministic + probabilistic match with a tunable trust/decay model; CLAIRE ML-assisted match.</li>
+      <li><strong>Weakness for a Databricks-first shop:</strong> Heaviest licensing and infra footprint; data is mastered <em>outside</em> the lakehouse; you inherit a second governance plane and a second copy of your data. Tier 1/2.</li>
+    </ul>
+
+    <h3>Reltio</h3>
+    <ul>
+      <li><strong>Architecture:</strong> Cloud-native, multi-tenant SaaS; microservices; Cassandra/Elasticsearch lineage; real-time bidirectional APIs. The reference modern SaaS MDM.</li>
+      <li><strong>Strengths:</strong> Real-time graph-based relationships, strong API-first integration, continuous DQ, and <strong>FERN</strong> (Flexible Entity Resolution Network) augmenting match rules with LLM intelligence. Forrester 2025 Leader. <em>Note: SAP announced its acquisition of Reltio</em> — expect tighter SAP-data gravity going forward.</li>
+      <li><strong>Governance:</strong> Vendor-operated; good but opaque — your master lives in Reltio's cloud, not your catalog.</li>
+      <li><strong>Stewardship UX:</strong> Best-in-class modern web stewardship and relationship visualization.</li>
+      <li><strong>Entity resolution:</strong> Configurable match + FERN LLM augmentation; survivorship via rules.</li>
+      <li><strong>Weakness for a Databricks-first shop:</strong> Pure Tier 2. Consumption pricing on a separate platform; data egress + duplication; you cannot run your own models against the master in-place. Openness is the gap.</li>
+    </ul>
+
+    <h3>Semarchy xDM</h3>
+    <ul>
+      <li><strong>Architecture:</strong> Pragmatic, model-driven hub on a standard RDBMS; deploys on-prem or cloud. "xDM" = unified MDM + data quality + reference + workflow.</li>
+      <li><strong>Strengths:</strong> Outstanding developer/steward velocity — declarative model, fast app generation, clean match/merge/survivorship (consolidation rule + override rule), ML-assisted matching. Excellent stewardship UX for the price.</li>
+      <li><strong>Governance:</strong> Solid built-in workflow, lineage, and history — but again a self-contained model.</li>
+      <li><strong>Entity resolution:</strong> ID-match + fuzzy-match into clusters; golden record lifecycle automated from matcher + survivorship config.</li>
+      <li><strong>Weakness for a Databricks-first shop:</strong> RDBMS-centric; integrates <em>with</em> the lakehouse (Tier 3) rather than running in it; scale ceiling on very large fuzzy-match workloads vs Spark.</li>
+    </ul>
+
+    <h3>Profisee</h3>
+    <ul>
+      <li><strong>Architecture:</strong> Cloud-native multidomain platform, tight Microsoft/Azure + Purview/Fabric alignment; SQL-Server-rooted.</li>
+      <li><strong>Strengths:</strong> Approachable stewardship UI, fast time-to-value, strong matching/survivorship, good Purview integration. Mid-market sweet spot.</li>
+      <li><strong>Weakness for a Databricks-first shop:</strong> Microsoft-gravity, not Databricks-gravity; Tier 2/3. On Databricks it is a connected hub, not a resident.</li>
+    </ul>
+
+    <h3>Ataccama ONE</h3>
+    <ul>
+      <li><strong>Architecture:</strong> Unified platform — data quality + catalog + MDM + observability — with a strong AI/ML automation story (profiling, anomaly, auto-matching).</li>
+      <li><strong>Strengths:</strong> DQ-first heritage means excellent profiling/standardization; one fabric for catalog + quality + master. Increasingly cloud-flexible.</li>
+      <li><strong>Weakness for a Databricks-first shop:</strong> Still a platform you stand up alongside Databricks (Tier 3). Its catalog/quality overlaps and competes with Unity Catalog rather than deferring to it.</li>
+    </ul>
+
+    <h3>SAP MDG (Master Data Governance)</h3>
+    <ul>
+      <li><strong>Architecture:</strong> MDM embedded in S/4HANA; ABAP/HANA; co-deployed (hub) or central governance.</li>
+      <li><strong>Strengths:</strong> Unbeatable <em>inside</em> the SAP estate — native data models, validations, and process governance for SAP material/business-partner/finance master. Deep workflow.</li>
+      <li><strong>Weakness for a Databricks-first shop:</strong> SAP-centric to the point of gravity well; weak for non-SAP, analytics-led, multi-cloud mastering. Tier 1. (With SAP acquiring Reltio, expect MDG + Reltio convergence aimed at "AI-ready SAP + non-SAP data.")</li>
+    </ul>
+
+    <h3>The insurgents — proof the thesis is commercial</h3>
+    <ul>
+      <li><strong>LakeFusion</strong> — markets itself explicitly as <em>Databricks-native MDM + PIM + Graph</em>: unifies entities, products, and relationships into a governed, AI-ready foundation <em>without moving data out of the lakehouse</em>. This is Tier 4, productized. It validates that "native" is a real, buyable category — and is the closest competitor to this blueprint.</li>
+      <li><strong>Zingg (OSS)</strong> — open-source entity resolution that runs <em>inside</em> your Databricks workspace via Spark; the <code>ZINGG_ID</code> lives in Delta, governed by Unity Catalog, trained by your team via active learning. It is not a full MDM (no stewardship/workflow/publishing), but it is the canonical native <em>matching engine</em> — and a perfect "buy the hard part, build the rest" component. Its own framing nails the thesis: "integrating with the warehouse and running natively inside it are architecturally very different things."</li>
+    </ul>
+
+    <div class="callout native">
+      <div class="ct">Read of the market</div>
+      <p>The incumbents win on <strong>breadth, packaged domains, stewardship maturity, and OOTB connectors</strong>. They lose, for a Databricks-first buyer, on <strong>openness, data proximity, cost model, and AI-in-place</strong> — exactly the axes a Tier-4 product owns. The whitespace is not "a better hub." It is "no hub at all."</p>
+    </div>
+
+    <h2>Comparison matrix</h2>
+    <div class="tablewrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Dimension</th>
+          <th>Informatica</th>
+          <th>Reltio</th>
+          <th>Semarchy</th>
+          <th>Profisee</th>
+          <th>Ataccama</th>
+          <th>SAP MDG</th>
+          <th>This blueprint</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td>Tier</td><td>1→2</td><td>2</td><td>3</td><td>2/3</td><td>3</td><td>1</td><td class="y">4</td></tr>
+        <tr><td>Master lives in your catalog</td><td class="n">No</td><td class="n">No</td><td class="n">No</td><td class="n">No</td><td class="n">No</td><td class="n">No</td><td class="y">Yes (Delta/UC)</td></tr>
+        <tr><td>Governance plane</td><td>Own</td><td>Own</td><td>Own</td><td>Purview</td><td>Own</td><td>SAP</td><td class="y">Unity Catalog</td></tr>
+        <tr><td>Stewardship UX</td><td class="p">Mature/heavy</td><td class="y">Excellent</td><td class="y">Excellent</td><td class="y">Strong</td><td>Good</td><td>Process-deep</td><td class="p">Build (ext. app)</td></tr>
+        <tr><td>Entity resolution</td><td>Det+prob+CLAIRE</td><td>Rules+FERN/LLM</td><td>ID+fuzzy+ML</td><td>Match+ML</td><td>AI auto-match</td><td>Rule-based</td><td class="y">Det+prob+vector/LLM</td></tr>
+        <tr><td>Survivorship</td><td class="y">Trust framework</td><td class="y">Rules</td><td class="y">Consol+override</td><td>Rules</td><td>Rules</td><td>Rules</td><td class="y">Rules-as-data</td></tr>
+        <tr><td>Hierarchy / graph</td><td class="y">Strong</td><td class="y">Graph-native</td><td>Good</td><td>Good</td><td>Good</td><td>SAP graph</td><td>Delta+graph lib</td></tr>
+        <tr><td>Workflow / approval</td><td>ActiveVOS</td><td class="y">Built-in</td><td class="y">Built-in</td><td>Built-in</td><td>Built-in</td><td class="y">SAP BPM</td><td class="p">Delta+ext. app</td></tr>
+        <tr><td>Integration</td><td class="y">Huge library</td><td class="y">API-first</td><td>Good</td><td>Azure-centric</td><td>Good</td><td>SAP-centric</td><td class="y">Lakehouse-native + UC</td></tr>
+        <tr><td>AI / ML</td><td>CLAIRE</td><td class="y">FERN/LLM</td><td>ML match</td><td>ML match</td><td class="y">AI-heavy</td><td class="p">Emerging</td><td class="y">MLflow + Vector + LLM in-place</td></tr>
+        <tr><td>Deployment</td><td>On-prem/cloud</td><td>SaaS</td><td>Self/cloud</td><td>Cloud</td><td>Self/cloud</td><td>SAP</td><td class="y">In your workspace</td></tr>
+        <tr><td>Cost model</td><td class="n">License-heavy</td><td class="p">Consumption SaaS</td><td>License</td><td>Subscription</td><td>License</td><td class="n">SAP license</td><td class="y">DBU + storage only</td></tr>
+        <tr><td>Openness / lock-in</td><td class="n">High lock-in</td><td class="n">High lock-in</td><td class="p">Medium</td><td class="p">Medium</td><td class="p">Medium</td><td class="n">Very high</td><td class="y">Open (Delta/OSS)</td></tr>
+        <tr><td>Packaged domain models</td><td class="y">Many</td><td class="y">Many</td><td class="p">Some</td><td class="p">Some</td><td class="p">Some</td><td class="y">SAP domains</td><td class="n">Build/config</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <div class="diagram-cap">Green = strength for a Databricks-first buyer · amber = caveat · red = liability. Honest about where the blueprint is weaker (stewardship UI, packaged domains).</div>
+
+    <h2>Product lessons</h2>
+    <div class="kgrid">
+      <div class="box">
+        <h4>Copy</h4>
+        <ul>
+          <li><strong>Trust/decay framework</strong> (Informatica) — survivorship driven by source trust + recency decay, not naive last-write-wins.</li>
+          <li><strong>Graph-native relationships</strong> (Reltio) — model relationships as first-class, not as a join afterthought.</li>
+          <li><strong>Model-driven app generation</strong> (Semarchy) — config-over-code so a new domain is metadata, not a fork.</li>
+          <li><strong>Consolidation + override survivorship</strong> (Semarchy) — automatic value + explicit steward override, both versioned.</li>
+          <li><strong>LLM-augmented matching</strong> (Reltio FERN, Informatica CLAIRE) — but run it in-platform.</li>
+          <li><strong>DQ-first standardization</strong> (Ataccama) — profile and score before you match.</li>
+        </ul>
+      </div>
+      <div class="box">
+        <h4>Avoid</h4>
+        <ul>
+          <li><strong>A proprietary mastering store</strong> on the critical path — the original sin of Tiers 1–3.</li>
+          <li><strong>A parallel governance/security model</strong> that duplicates Unity Catalog.</li>
+          <li><strong>Black-box match scoring</strong> with no explainability or lineage.</li>
+          <li><strong>An app-server-bound architecture</strong> that can't exploit Spark for billion-row fuzzy match.</li>
+          <li><strong>Monolithic licensing</strong> that taxes every domain and record.</li>
+          <li><strong>Catalog/quality features that compete with UC</strong> instead of deferring to it (Ataccama overlap).</li>
+        </ul>
+      </div>
+    </div>
+    <div class="callout good">
+      <div class="ct">Redesign for the lakehouse</div>
+      <p><strong>Survivorship → rules-as-data:</strong> store rules in Delta config tables, version them, A/B them, and reprocess history with time travel. <strong>Match → pluggable strategy contract</strong> over Spark, with vector/LLM as just another strategy. <strong>Stewardship state → Delta tables</strong> read/written by an external UI, so the workbench is replaceable and the audit trail is the data. <strong>Publishing → adapters + Delta Sharing / CDF</strong>, so "activation" is often <em>zero-copy</em>. <strong>Governance → adopt UC</strong> wholesale; build nothing.</p>
+    </div>
+
+    <p class="footer-note">Sources consulted (public positioning, mid-2026): Databricks Community partner blogs on native MDM &amp; LakeFusion; Zingg.ai; Reltio press &amp; Forrester 2025 Wave coverage incl. FERN and the SAP acquisition; Informatica CLAIRE materials; Semarchy xDM match/merge/survivorship docs; Profisee &amp; Ataccama ONE product pages; SolutionsReview / Gartner Peer Insights MDM roundups.</p>
+
+    <div class="pager">
+      <a href="index.html"><span class="pk">Prev · A</span>← Executive Summary</a>
+      <a class="next" href="native.html"><span class="pk">Next · C</span>What "Databricks-Native" Requires →</a>
+    </div>
+  </main>
+</div>
+<script src="assets/nav.js"></script>
+</body>
+</html>

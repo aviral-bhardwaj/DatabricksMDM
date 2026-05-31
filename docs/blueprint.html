@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>F · Reference Implementation Blueprint — MDM</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<header class="topbar">
+  <button class="nav-toggle" aria-label="Menu">☰</button>
+  <a class="brand" href="index.html"><span class="dot"></span> Databricks-Native MDM</a>
+  <span class="tag">Architecture Blueprint</span>
+  <span class="spacer"></span>
+  <a class="gh" href="https://github.com/aviral-bhardwaj/databricksmdm">GitHub ↗</a>
+</header>
+
+<div class="layout">
+  <aside class="sidebar" id="sidebar">
+    <h4>Blueprint</h4>
+    <a href="index.html"><span class="lt">A</span> Executive Summary</a>
+    <a href="market.html"><span class="lt">B</span> Market Landscape</a>
+    <a href="native.html"><span class="lt">C</span> What "Native" Requires</a>
+    <a href="solid.html"><span class="lt">D</span> SOLID Architecture</a>
+    <a href="domain.html"><span class="lt">E</span> Domain &amp; Contexts</a>
+    <a href="blueprint.html"><span class="lt">F</span> Implementation</a>
+    <a href="risks.html"><span class="lt">G</span> Risks &amp; Edge</a>
+    <a href="roadmap.html"><span class="lt">H</span> Roadmap</a>
+  </aside>
+
+  <main class="content">
+    <div class="eyebrow">F · Reference Implementation Blueprint</div>
+    <h1>From principles to a production codebase</h1>
+    <p class="lead">A repo where domain logic is a pure Python package, pipelines are declarative Lakeflow assets, configuration is metadata not code, and a new domain ships as a bundle. Plus the medallion layout, catalog strategy, multi-domain plan, and the functional + non-functional design.</p>
+
+    <h2>Repository structure</h2>
+    <pre>
+databricks-mdm/
+├─ pyproject.toml                # one installable package: mdm_core (pure domain)
+├─ databricks.yml                # root Asset Bundle (targets: dev/test/prod)
+├─ packages/
+│  └─ mdm_core/                  # ── PURE DOMAIN — no pyspark import anywhere ──
+│     ├─ ingestion/   (BatchSource, StreamSource, SchemaProvider ports)
+│     ├─ quality/     (Standardizer, QualityRule)
+│     ├─ matching/    (BlockingStrategy, MatchStrategy, calibration, MatchResult)
+│     ├─ mastering/   (ClusterPolicy, SurvivorshipRule, GoldenRecordAssembler)
+│     ├─ stewardship/ (StewardshipTask, ApprovalWorkflow state machine)
+│     ├─ publishing/  (PublicationAdapter port)
+│     ├─ model/       (RawRecord, GoldenRecord, Cluster ... dataclasses)
+│     └─ ports/       (RecordRepository + all Protocols)
+├─ packages/
+│  └─ mdm_runtime/                # ── INFRASTRUCTURE — the only Spark-aware code ──
+│     ├─ adapters/   (DeltaRecordRepository, AutoLoaderSource, KafkaAdapter,
+│     │               DeltaSharingAdapter, CDFAdapter, VectorSearchClient,
+│     │               ZinggMatchAdapter, ModelServingMatcher)
+│     ├─ uc/         (catalog/schema bootstrap, tag + policy application)
+│     └─ obs/        (system-table + DLT-event-log readers, monitors)
+├─ pipelines/                    # ── ORCHESTRATION — declarative, owns no rules ──
+│  ├─ bronze_ingest.dlt.py       # Lakeflow/DLT: source → Bronze
+│  ├─ silver_standardize.dlt.py  # DLT + expectations → Silver
+│  ├─ match_cluster.py           # Spark job: block → match → cluster (Master/Trust)
+│  ├─ master_survive.py          # Delta MERGE: assemble + survivorship
+│  └─ publish.py                 # emit PublishEvents / activate
+├─ conf/                         # ── METADATA, not code ──
+│  ├─ domains/customer.yml  product.yml  supplier.yml  location.yml
+│  ├─ match/   customer.match.yml   (strategies, thresholds, blocking keys)
+│  ├─ survivorship/ customer.surv.yml (rules-as-data, trust + decay)
+│  ├─ standardization/ customer.std.yml
+│  └─ reference/ countries.csv  currencies.csv  ...
+├─ resources/                    # bundle job + pipeline + cluster definitions
+│  ├─ workflows.customer.yml   workflows.product.yml ...
+├─ apps/
+│  └─ steward-workbench/         # external web app (Databricks App or Next.js)
+├─ tests/
+│  ├─ unit/        (pandas-backed domain tests — no cluster needed)
+│  ├─ contract/    (schema/contract tests per seam)
+│  └─ integration/ (ephemeral catalog, end-to-end on a small cluster)
+└─ .github/workflows/  ci.yml  cd.yml   (validate → test → bundle deploy)
+    </pre>
+    <div class="callout good">
+      <div class="ct">The structural invariant</div>
+      <p><code>mdm_core</code> has <strong>zero</strong> dependency on PySpark, Delta, or the Databricks SDK — enforced by a CI import-linter rule. That single constraint is what operationalizes Dependency Inversion: domain rules are unit-tested in milliseconds on pandas and run unchanged on a billion rows because the Spark-ness lives only in <code>mdm_runtime</code>.</p>
+    </div>
+
+    <h2>When to use what</h2>
+    <div class="tablewrap">
+    <table>
+      <thead><tr><th>Tool</th><th>Use it for</th><th>Don't use it for</th></tr></thead>
+      <tbody>
+        <tr><td><strong>PySpark</strong></td><td>Blocking, pairwise scoring at scale, cluster assembly, MERGE-based mastering</td><td>Embedding pure business rules (those go in <code>mdm_core</code>)</td></tr>
+        <tr><td><strong>SQL</strong></td><td>Gold projections, hierarchy rollups, DQ checks, steward-facing views, system-table queries</td><td>Stateful iterative matching</td></tr>
+        <tr><td><strong>Lakeflow / DLT</strong></td><td>Bronze→Silver declarative flows with expectations + managed lineage</td><td>Complex imperative graph clustering (use a Spark job task)</td></tr>
+        <tr><td><strong>Delta tables</strong></td><td>Every persistent object — raw, standardized, clusters, masters, cases</td><td>Ephemeral UI session state</td></tr>
+        <tr><td><strong>UC Volumes</strong></td><td>Landing raw files, model artifacts, large reference docs, exports</td><td>Structured master data (that's tables)</td></tr>
+        <tr><td><strong>Config metadata (YAML in Delta/Volumes)</strong></td><td>Domains, match strategies, survivorship rules, thresholds</td><td>Anything you'd need a code review + deploy to change frequently — keep it data</td></tr>
+        <tr><td><strong>Python package</strong></td><td>All domain logic + ports (testable, versioned, reusable)</td><td>Orchestration glue</td></tr>
+        <tr><td><strong>Asset Bundles</strong></td><td>Deploying jobs/pipelines/clusters per env; CI/CD; promotion</td><td>Runtime configuration that changes daily (that's conf tables)</td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <h2>Catalog, schema &amp; medallion design</h2>
+    <p>Environment separation by <strong>catalog</strong>; domain + tier separation by <strong>schema</strong>. This makes UC grants, lineage, and promotion clean.</p>
+    <pre>
+catalog            schema                  example tables
+────────           ──────                  ──────────────────────────────────
+mdm_dev    │
+mdm_test   │  ┌─ &lt;domain&gt;_bronze        raw_records, _quarantine
+mdm_prod   ┼──┤  &lt;domain&gt;_silver        standardized_records, dq_results
+           │  │  &lt;domain&gt;_master        clusters, golden_records, survivor_attr,
+           │  │                          xref, merge_lineage         ← Master/Trust
+           │  ├─ &lt;domain&gt;_gold          mart_*, hierarchy_*, serving_*
+           │  ├─ mdm_steward            cases, decisions, assignments  (⇄ ext UI)
+           │  ├─ mdm_reference          code_sets, mappings, crosswalks
+           │  └─ mdm_ops                run_audit, monitor_metrics, config_*
+&lt;domain&gt; ∈ { customer, product, supplier, location }
+
+Naming: snake_case · table = noun_plural · views = vw_* · config = cfg_*
+        every table tagged: domain=, tier=, pii=, owner=  (UC tags)
+    </pre>
+    <div class="callout native">
+      <div class="ct">Why catalog-per-env beats schema-per-env</div>
+      <p>Catalog boundaries map cleanly to UC isolation, Delta Sharing scopes, and bundle targets. <code>dev→test→prod</code> promotion is a bundle target switch; cross-env reads are blocked by catalog ACLs, not by hopeful naming. Domain-per-schema then keeps per-domain stewardship and grants independent — true tenant/domain isolation.</p>
+    </div>
+
+    <h2>Multi-domain support</h2>
+    <p>Customer, product, supplier, location, and reference data share <strong>one engine, many configs</strong>. A domain is a YAML bundle (canonical schema + standardization + blocking + match strategies + survivorship + hierarchy), never a new codebase. Domain-specific quirks (product taxonomies, supplier DUNS, address geocoding) are plugged in as strategies implementing the same ports.</p>
+    <div class="tablewrap">
+    <table>
+      <thead><tr><th>Domain</th><th>Identity signal</th><th>Native lever</th></tr></thead>
+      <tbody>
+        <tr><td>Customer</td><td>name + address + email/phone fuzziness</td><td>Vector match on name/address embeddings; LLM adjudication of hard pairs</td></tr>
+        <tr><td>Product</td><td>descriptions, GTIN, attributes, taxonomy</td><td>Embedding similarity on descriptions; Vector Search for near-dupes; PIM-style attributes</td></tr>
+        <tr><td>Supplier</td><td>legal name, DUNS, tax id, hierarchy</td><td>Deterministic on IDs + graph rollup of parent/child</td></tr>
+        <tr><td>Location</td><td>address standardization, geocode</td><td>Geospatial UDFs + standardization policy; reference crosswalks</td></tr>
+        <tr><td>Reference</td><td>controlled code sets &amp; crosswalks</td><td>RDM schema; versioned CodeSets feeding standardization</td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <h2>Batch + near-real-time, one model</h2>
+    <pre>
+ BATCH (nightly / on-demand)                NEAR-REAL-TIME (continuous)
+ ─────────────────────────────             ───────────────────────────────
+ Auto Loader file trigger        ───┐  ┌── Structured Streaming / Lakeflow Connect CDC
+ full/blocked match (Spark)         │  │   incremental match on new+affected blocks
+ MERGE mastering                    ▼  ▼   MERGE upserts golden records
+ publish snapshot                ┌──────────┐  emit GoldenRecordChanged via CDF
+                                 │  SAME     │  → online store / serving for ops lookups
+                                 │  mdm_core │
+                                 │  domain   │  Same ports, same rules. Only the
+                                 │  logic    │  RecordRepository + trigger differ.
+                                 └──────────┘
+    </pre>
+    <p>Because domain logic is pure and injected, the <em>same</em> <code>MatchStrategy</code> and <code>SurvivorshipRule</code> run in both modes. Near-real-time only re-resolves the affected blocks (incremental), with a periodic batch reconciliation to catch cross-block drift.</p>
+
+    <h2>Functional capabilities (deliverable 7)</h2>
+    <div class="tablewrap">
+    <table>
+      <thead><tr><th>Capability</th><th>Native implementation</th></tr></thead>
+      <tbody>
+        <tr><td>Data onboarding</td><td>Auto Loader / Lakeflow Connect → Bronze; schema evolution captured; provenance columns auto-added</td></tr>
+        <tr><td>Schema mapping</td><td><code>SchemaProvider</code> per source maps to canonical; config-driven, contract-tested</td></tr>
+        <tr><td>Standardization</td><td><code>Standardizer</code> policies (parse/normalize/case/format) in DLT; reference crosswalks applied</td></tr>
+        <tr><td>Validation &amp; quality scoring</td><td>DLT expectations + <code>QualityRule</code>s; quality_score column + quarantine table; tier (gold/silver/bronze) labels</td></tr>
+        <tr><td>Deterministic matching</td><td><code>DeterministicMatch</code> on keys (tax id, GTIN, email) — exact + normalized</td></tr>
+        <tr><td>Probabilistic / fuzzy</td><td><code>ProbabilisticMatch</code> (Jaro-Winkler, token, phonetic) over Spark with blocking; calibrated scores</td></tr>
+        <tr><td>Semantic / AI matching</td><td>Embed attributes → <strong>Vector Search</strong> for candidate generation; <strong>LLM adjudicator</strong> (served FM) resolves hard pairs with explanation</td></tr>
+        <tr><td>Clustering</td><td><code>ClusterPolicy</code> (connected components / correlation clustering) → Cluster aggregate</td></tr>
+        <tr><td>Merge &amp; unmerge</td><td>Delta MERGE; unmerge by replaying cluster history (time travel) and re-survivoring; case-linked</td></tr>
+        <tr><td>Survivorship &amp; lineage</td><td>Rules-as-data: trust + recency decay + source priority + override; every survivor carries contributing_refs + rule_id</td></tr>
+        <tr><td>Stewardship workbench</td><td>External app over <code>mdm_steward</code> Delta tables; queues, side-by-side compare, bulk actions</td></tr>
+        <tr><td>Workflow approvals</td><td><code>ApprovalWorkflow</code> state machine persisted in Delta; SLA + assignment; events via CDF</td></tr>
+        <tr><td>Hierarchy management</td><td>GraphFrames/edge tables; parent/child + rollups; soft links from vector similarity</td></tr>
+        <tr><td>Reference data management</td><td><code>mdm_reference</code> schema; versioned CodeSets, effective-dated crosswalks</td></tr>
+        <tr><td>Publish downstream</td><td>Delta Sharing / CDF first (zero-copy); Kafka/JDBC/reverse-ETL adapters when required; receipts logged</td></tr>
+        <tr><td>Auditability / explainability</td><td>Every decision carries strategy_id + explanation; system tables + CDF reconstruct full lineage; LLM rationale stored</td></tr>
+        <tr><td>Temporal versioning / reprocessing</td><td>Bitemporal golden records + Delta time travel; replay any rule version against history to A/B survivorship</td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <h2>Non-functional architecture (deliverable 8)</h2>
+    <div class="kgrid">
+      <div class="box"><h4>Scalability</h4><p>Blocking keeps match O(n) not O(n²); Photon + autoscaling for billion-row passes; incremental re-match in streaming. Domains scale independently (schema isolation).</p></div>
+      <div class="box"><h4>Cost efficiency</h4><p>DBUs + storage only — no per-seat/per-record MDM license. Serverless for spiky steward/serving loads; job clusters for batch; liquid clustering + Z-order on block keys to cut scan.</p></div>
+      <div class="box"><h4>Security &amp; access control</h4><p>UC grants on catalog/schema/table; no app-level ACL. Domain isolation by schema; steward roles map to UC groups.</p></div>
+      <div class="box"><h4>PII protection</h4><p>UC column masks + row filters; <code>pii=</code> tags drive policy; tokenize at Silver where needed; LLM calls use governed FM endpoints (no data egress).</p></div>
+      <div class="box"><h4>Observability</h4><p><code>system.access/lineage/billing</code> + DLT event log + Lakehouse Monitoring on match rate, merge rate, DQ drift, cost per run.</p></div>
+      <div class="box"><h4>Resiliency &amp; replayability</h4><p>Append-only Bronze + idempotent MERGE = safe re-runs. Time travel for point-in-time rebuild. Quarantine instead of pipeline failure on bad data.</p></div>
+      <div class="box"><h4>Testability</h4><p>Pure domain unit tests on pandas (ms); contract tests per seam; ephemeral-catalog integration tests in CI. Import-linter forbids Spark in <code>mdm_core</code>.</p></div>
+      <div class="box"><h4>Tenant / domain isolation</h4><p>Catalog-per-env, schema-per-domain; per-domain bundles, grants, and steward queues. One noisy domain can't starve another.</p></div>
+      <div class="box"><h4>CI/CD</h4><p>GitHub Actions: validate bundle → unit/contract tests → deploy to dev/test → gated prod. Config changes flow through review but don't require code deploy.</p></div>
+      <div class="box"><h4>Performance tuning</h4><p>Liquid clustering on block keys; broadcast small reference tables; pandas/Arrow UDFs for vectorized scoring; cache embeddings; batch LLM adjudication of only the gray-zone pairs.</p></div>
+    </div>
+
+    <div class="pager">
+      <a href="domain.html"><span class="pk">Prev · E</span>← Domain &amp; Contexts</a>
+      <a class="next" href="risks.html"><span class="pk">Next · G</span>Risks, Trade-offs &amp; Differentiators →</a>
+    </div>
+  </main>
+</div>
+<script src="assets/nav.js"></script>
+</body>
+</html>

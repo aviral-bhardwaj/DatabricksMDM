@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>E · Domain Model &amp; Bounded Contexts — MDM Blueprint</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<header class="topbar">
+  <button class="nav-toggle" aria-label="Menu">☰</button>
+  <a class="brand" href="index.html"><span class="dot"></span> Databricks-Native MDM</a>
+  <span class="tag">Architecture Blueprint</span>
+  <span class="spacer"></span>
+  <a class="gh" href="https://github.com/aviral-bhardwaj/databricksmdm">GitHub ↗</a>
+</header>
+
+<div class="layout">
+  <aside class="sidebar" id="sidebar">
+    <h4>Blueprint</h4>
+    <a href="index.html"><span class="lt">A</span> Executive Summary</a>
+    <a href="market.html"><span class="lt">B</span> Market Landscape</a>
+    <a href="native.html"><span class="lt">C</span> What "Native" Requires</a>
+    <a href="solid.html"><span class="lt">D</span> SOLID Architecture</a>
+    <a href="domain.html"><span class="lt">E</span> Domain &amp; Contexts</a>
+    <a href="blueprint.html"><span class="lt">F</span> Implementation</a>
+    <a href="risks.html"><span class="lt">G</span> Risks &amp; Edge</a>
+    <a href="roadmap.html"><span class="lt">H</span> Roadmap</a>
+  </aside>
+
+  <main class="content">
+    <div class="eyebrow">E · Domain-Driven Design &amp; Canonical Model</div>
+    <h1>Nine bounded contexts, one ubiquitous language, contracts at every seam</h1>
+    <p class="lead">MDM fails when "customer" means six different things in six modules. DDD fixes that: each bounded context owns its model and vocabulary, contexts communicate only through explicit data contracts and domain events, and the canonical entity model is shared deliberately — not by accident.</p>
+
+    <h2>Context map</h2>
+    <pre>
+                            ┌──────────────────────────────────────┐
+                            │   GOVERNANCE  (UC policies, tags,     │
+                            │   PolicyRule, lineage, audit)         │  ← shared kernel,
+                            └───────────────▲──────────────────────┘     upstream of all
+                                            │ enforces
+ ┌────────────┐   contract   ┌────────────┐│  contract  ┌────────────┐   event   ┌────────────┐
+ │ INGESTION  │─────────────▶│  QUALITY   ││───────────▶│  MATCHING  │──────────▶│ MASTERING  │
+ │ RawRecord  │ RawRecord    │Standardized││Standardized│MatchCand.  │ Cluster   │ GoldenRec. │
+ └────────────┘              │ Record     ││  Record    │ Cluster    │           │ SurvivorAt.│
+                             └────────────┘│            └────────────┘           └─────┬──────┘
+                                           │                                           │ GoldenRecordPublished
+   ┌─────────────┐   ref data   ┌──────────┴───┐    ┌──────────────┐                   ▼
+   │ REFERENCE   │─────────────▶│  HIERARCHY   │◀───│ STEWARDSHIP  │           ┌────────────┐
+   │ DATA (RDM)  │ code maps    │ relationship │    │ Case, Decision│          │ PUBLISHING │
+   │ CodeSet     │              │ graph/edges  │    │ Approval flow │          │ PublishEvt │
+   └─────────────┘              └──────────────┘    └──────────────┘           └────────────┘
+        ▲                              ▲                    ▲   conformist        │  zero-copy/
+        └── conformist ────────────────┴── partnership ─────┘   (steward UI       └─▶ adapters
+                                                                 outside DBX)
+    </pre>
+    <div class="diagram-cap">Governance is an upstream shared kernel. Stewardship is a partnership context whose UI lives outside the lakehouse but whose state is native Delta.</div>
+
+    <h2>The nine bounded contexts</h2>
+    <div class="tablewrap">
+    <table>
+      <thead><tr><th>Context</th><th>Responsibility</th><th>Owns (aggregate root)</th><th>Speaks to</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Ingestion</strong></td><td>Land source data faithfully; capture provenance</td><td>RawRecord</td><td>→ Quality (contract)</td></tr>
+        <tr><td><strong>Quality</strong></td><td>Parse, normalize, validate, score</td><td>StandardizedRecord</td><td>→ Matching (contract)</td></tr>
+        <tr><td><strong>Matching</strong></td><td>Block, compare, score, cluster</td><td>Cluster (of MatchCandidates)</td><td>→ Mastering (event)</td></tr>
+        <tr><td><strong>Mastering</strong></td><td>Assemble golden record; apply survivorship; merge/unmerge</td><td>GoldenRecord</td><td>→ Publishing, Stewardship</td></tr>
+        <tr><td><strong>Governance</strong></td><td>Policy, access, masking, lineage, audit (UC-backed)</td><td>PolicyRule</td><td>shared kernel (all)</td></tr>
+        <tr><td><strong>Stewardship</strong></td><td>Human adjudication, cases, approvals, overrides</td><td>StewardshipCase</td><td>⇄ Mastering, Matching</td></tr>
+        <tr><td><strong>Publishing</strong></td><td>Activate masters downstream (zero-copy first)</td><td>PublishEvent</td><td>← Mastering (event)</td></tr>
+        <tr><td><strong>Reference Data</strong></td><td>Manage code sets, mappings, crosswalks</td><td>CodeSet</td><td>→ Quality, Hierarchy</td></tr>
+        <tr><td><strong>Hierarchy</strong></td><td>Relationships, rollups, graph, soft links</td><td>HierarchyNode / Edge</td><td>← Mastering, Reference</td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <h2>Canonical domain entities</h2>
+    <p>The ubiquitous language, made concrete. Each maps to a Delta table in the relevant schema; the aggregate root is the consistency boundary.</p>
+    <pre>
+RawRecord            ── id, source_system, source_pk, payload(struct/variant),
+  (aggregate root)      ingested_at, batch_id, _provenance        [Bronze, append-only]
+
+StandardizedRecord   ── raw_ref, canonical_schema_v, attributes{...normalized},
+                        quality_score, dq_flags[], std_policy_v   [Silver]
+
+MatchCandidate       ── record_a_ref, record_b_ref, block_key,
+  (value object)        score(0..1), strategy_id, explanation{},  [Master/Trust]
+                        calibrated_prob
+
+Cluster              ── cluster_id, member_refs[], match_basis,
+  (aggregate root)      confidence, status(auto|review|confirmed), created_by_run
+
+GoldenRecord         ── entity_id (stable surrogate), domain, cluster_ref,
+  (aggregate root)      attributes{SurvivorAttribute...}, trust_score,
+                        version, valid_from, valid_to, is_current   [Master/Trust]
+
+SurvivorAttribute    ── name, value, source_system, rule_id, trust,
+  (value object)        contributing_refs[], overridden_by(steward?)
+
+StewardshipCase      ── case_id, cluster_ref|entity_ref, type(merge|unmerge|
+  (aggregate root)      override|exception), state, assignee, sla,
+                        decisions[], opened_at, closed_at          [Delta, ⇄ ext UI]
+
+PublishEvent         ── event_id, entity_id, change_type(CDC), version,
+  (domain event)        target_channels[], emitted_at, receipt
+
+PolicyRule           ── rule_id, scope(catalog/schema/table/column),
+                        kind(access|mask|tag|retention), expr,
+                        bound_to_uc_object                          [Governance]
+
+CodeSet / RefMapping ── code_set_id, code, label, parent, effective_dates,
+                        crosswalk{src→canonical}                    [Reference]
+    </pre>
+
+    <h2>Aggregates &amp; consistency boundaries</h2>
+    <ul>
+      <li><strong>Cluster</strong> is the consistency boundary for <em>identity</em>. You never mutate a member's cluster membership outside a cluster transaction — that's how you avoid two golden records claiming the same source row.</li>
+      <li><strong>GoldenRecord</strong> is the consistency boundary for <em>truth</em>. Survivorship runs atomically per entity; a half-applied survivor set must never be observable. Delta <code>MERGE</code> + a single commit guarantees this.</li>
+      <li><strong>StewardshipCase</strong> is the consistency boundary for <em>human decisions</em>. A merge approval and the resulting golden-record change are linked by case_id so the audit trail is reconstructable.</li>
+      <li><strong>Temporal rule:</strong> GoldenRecord is bitemporal — <code>version</code> + <code>valid_from/valid_to</code> + Delta time travel. You can answer "what did we believe about this customer on 2026-01-01?" without a separate history store.</li>
+    </ul>
+
+    <h2>Domain events &amp; data contracts</h2>
+    <p>Contexts integrate through events on Delta (materialized via Change Data Feed) and through explicit, versioned schema contracts at each seam — never by reaching into another context's tables.</p>
+    <div class="tablewrap">
+    <table>
+      <thead><tr><th>Event</th><th>Emitted by</th><th>Consumed by</th><th>Carried as</th></tr></thead>
+      <tbody>
+        <tr><td><code>RecordIngested</code></td><td>Ingestion</td><td>Quality</td><td>Bronze CDF</td></tr>
+        <tr><td><code>RecordStandardized</code></td><td>Quality</td><td>Matching</td><td>Silver CDF + contract v</td></tr>
+        <tr><td><code>ClusterFormed</code> / <code>ClusterChanged</code></td><td>Matching</td><td>Mastering, Stewardship</td><td>cluster table CDF</td></tr>
+        <tr><td><code>GoldenRecordChanged</code></td><td>Mastering</td><td>Publishing, Hierarchy</td><td>Master CDF</td></tr>
+        <tr><td><code>CaseDecided</code></td><td>Stewardship</td><td>Mastering</td><td>case table CDF</td></tr>
+        <tr><td><code>GoldenRecordPublished</code></td><td>Publishing</td><td>downstream</td><td>PublishEvent + receipt</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <div class="callout native">
+      <div class="ct">Why CDF is the event bus</div>
+      <p>In a native MDM you don't stand up Kafka to move events between contexts inside the lakehouse — <strong>Change Data Feed on each context's tables is the event log</strong>. It's durable, replayable, governed by UC, and gives every consumer exact incremental deltas with offsets. External systems can still get Kafka via a publishing adapter, but intra-product choreography is pure Delta.</p>
+    </div>
+
+    <h2>Data contracts (the seams)</h2>
+    <p>Each arrow in the context map is a contract: a named, versioned schema with explicit nullability, semantics, and an owner. Contracts are enforced as DLT expectations on the producing side and validated on read by the consumer. Breaking a contract is a versioned, reviewed change — not a silent column rename. This is what lets nine teams own nine contexts without a coordination meeting per release.</p>
+
+    <div class="pager">
+      <a href="solid.html"><span class="pk">Prev · D</span>← SOLID Architecture</a>
+      <a class="next" href="blueprint.html"><span class="pk">Next · F</span>Reference Implementation Blueprint →</a>
+    </div>
+  </main>
+</div>
+<script src="assets/nav.js"></script>
+</body>
+</html>
