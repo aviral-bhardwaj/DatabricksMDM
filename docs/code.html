@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>I · The Engine — Databricks-Native MDM</title>
+<meta name="description" content="The shipped Databricks-native MDM engine: a three-zone SOLID codebase with a pure, unit-tested domain core, Spark/Delta runtime adapters, and declarative pipelines.">
+<meta property="og:type" content="website">
+<meta property="og:title" content="The Engine — Databricks-Native MDM">
+<meta property="og:description" content="A truly Databricks-native MDM engine. Pure domain core (no Spark), config-driven multi-domain, union-find clustering, rules-as-data survivorship — 33 tests in 0.1s.">
+<meta name="twitter:card" content="summary">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<header class="topbar">
+  <button class="nav-toggle" aria-label="Menu">☰</button>
+  <a class="brand" href="index.html"><span class="dot"></span> Databricks-Native MDM</a>
+  <span class="tag">The Engine</span>
+  <span class="spacer"></span>
+  <a class="gh" href="https://github.com/aviral-bhardwaj/databricksmdm">GitHub ↗</a>
+</header>
+
+<div class="layout">
+  <aside class="sidebar" id="sidebar">
+    <h4>Blueprint</h4>
+    <a href="index.html"><span class="lt">A</span> Executive Summary</a>
+    <a href="market.html"><span class="lt">B</span> Market Landscape</a>
+    <a href="native.html"><span class="lt">C</span> What "Native" Requires</a>
+    <a href="solid.html"><span class="lt">D</span> SOLID Architecture</a>
+    <a href="domain.html"><span class="lt">E</span> Domain &amp; Contexts</a>
+    <a href="blueprint.html"><span class="lt">F</span> Implementation</a>
+    <a href="risks.html"><span class="lt">G</span> Risks &amp; Edge</a>
+    <a href="roadmap.html"><span class="lt">H</span> Roadmap</a>
+    <a href="code.html"><span class="lt">I</span> The Engine (code)</a>
+  </aside>
+
+  <main class="content">
+    <div class="eyebrow">I · The Shipped Engine</div>
+    <h1>From blueprint to running code</h1>
+    <p class="lead">The blueprint is no longer just a document — it's implemented. The repository ships a real Databricks-native MDM engine: a pure, Spark-free domain core that unit-tests in a tenth of a second, Spark/Delta runtime adapters, and declarative pipelines. This page maps the code to the architecture and shows how to run it.</p>
+
+    <div class="statline">
+      <div class="stat"><b>33</b><span>pure-domain tests, ~0.1s</span></div>
+      <div class="stat"><b>0</b><span>pyspark imports in core (enforced)</span></div>
+      <div class="stat"><b>16→7</b><span>records → golden (demo, 56% dedup)</span></div>
+      <div class="stat"><b>4</b><span>domains by config alone</span></div>
+    </div>
+
+    <h2>Three zones, one dependency rule</h2>
+    <p>The codebase enforces the separation the blueprint argues for: domain logic never knows it's on Spark. The dependency arrow points one way — <code>pipelines → runtime → core</code> — so the identical match/survivorship logic runs in a millisecond test and on a billion rows on a cluster.</p>
+    <pre>
+mdm/core      PURE DOMAIN — no pyspark anywhere (guarded by tests/test_purity.py)
+              model.py · ports.py · standardize/ · quality/ · matching/
+              (deterministic · probabilistic · semantic · registry) ·
+              cluster/connected_components.py · mastering/(survivorship · assembler) ·
+              stewardship/workflow.py · config/ · service.py
+mdm/runtime   INFRASTRUCTURE — the ONLY zone importing pyspark/delta/SDK
+              repository_delta.py · repository_memory.py · encoders.py ·
+              sources/(autoloader · jdbc) · adapters/publication.py ·
+              uc.py · vector.py · observability.py
+mdm/pipelines ORCHESTRATION — declarative, owns no rules
+              bronze_ingest.py · silver_standardize.py (DLT) ·
+              match_cluster.py · master_publish.py
+conf/domains  customer · product · supplier · location  (a domain is data)
+</pre>
+
+    <h2>Run it yourself — no Databricks needed</h2>
+    <pre>
+pip install -e ".[dev]"
+
+pytest                 # 33 tests, pure-domain, ~0.1s
+python -m mdm demo     # end-to-end on bundled SAP/Salesforce/Oracle/Odoo sample data
+</pre>
+    <p>The demo standardizes, quality-scores, blocks, matches (deterministic + probabilistic), clusters with union-find, and applies rules-as-data survivorship — entirely on pandas via the in-memory repository, which satisfies the same <code>RecordRepository</code> port as the Delta one. Output:</p>
+    <pre>
+========================================================================
+  Databricks-native MDM — demo  (domain: customer)
+========================================================================
+  loaded 16 raw records from 4 sources
+
+  Resolution stats
+    input_records     : 16
+    candidate_pairs   : 12
+    auto_merges       : 12
+    clusters          : 7
+    golden_records    : 7
+    dedup_ratio       : 0.5625
+
+  Resolved entities (multi-source clusters):
+    acme              trust=0.81  members=3  sources=[oracle, salesforce, sap]
+    globex            trust=0.94  members=3  sources=[odoo, oracle, sap]
+    wayne enterprises trust=0.87  members=3  sources=[odoo, salesforce, sap]
+    ...
+  16 records collapsed into 7 golden records (56% dedup).
+========================================================================
+</pre>
+
+    <h2>Code → blueprint mapping</h2>
+    <div class="tablewrap">
+    <table>
+      <thead><tr><th>Module</th><th>Realizes (blueprint)</th><th>Note</th></tr></thead>
+      <tbody>
+        <tr><td><code>core/ports.py</code></td><td>D · the nine contracts</td><td>Protocols = Dependency Inversion seam</td></tr>
+        <tr><td><code>core/model.py</code></td><td>E · canonical entities</td><td>RawRecord … GoldenRecord, SurvivorAttribute</td></tr>
+        <tr><td><code>core/matching/registry.py</code></td><td>D · Open/Closed strategies</td><td>add an algorithm = a class + a YAML line</td></tr>
+        <tr><td><code>core/matching/semantic.py</code></td><td>G · AI-in-place differentiator</td><td>vector cosine via an injected Encoder</td></tr>
+        <tr><td><code>core/cluster/connected_components.py</code></td><td>fixes v1 bug</td><td>union-find ⇒ transitive closure</td></tr>
+        <tr><td><code>core/mastering/survivorship.py</code></td><td>B · trust/decay lesson</td><td>rules-as-data incl. TRUST_DECAY</td></tr>
+        <tr><td><code>runtime/uc.py</code></td><td>C · adopt UC, fix injection</td><td>identifier-validated + parameterized SQL</td></tr>
+        <tr><td><code>runtime/repository_delta.py</code></td><td>F · Master/Trust via MERGE + CDF</td><td>same port as the in-memory repo (Liskov)</td></tr>
+        <tr><td><code>pipelines/silver_standardize.py</code></td><td>F · declarative DLT + expectations</td><td>wires the pure core into a DLT table</td></tr>
+        <tr><td><code>conf/domains/*.yml</code></td><td>F · multi-domain by config</td><td>customer / product / supplier / location</td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <h2>What got fixed from v1</h2>
+    <div class="callout good">
+      <div class="ct">Correctness &amp; security</div>
+      <ul>
+        <li><strong>Non-transitive clustering</strong> (v1 used <code>monotonically_increasing_id</code>) → union-find connected components, with a test asserting A↔B, B↔C ⇒ one cluster.</li>
+        <li><strong>SQL injection</strong> in the v1 audit/lineage/review queries → all identifiers validated against an allowlist and back-quoted; all values bound as parameters (<code>runtime/uc.py</code>).</li>
+        <li><strong>Hardcoded <code>country</code> blocking</strong> and <strong>customer-only DQ</strong> → fully config-driven, any domain.</li>
+        <li><strong>One welded Random Forest</strong> on the match path → a pluggable strategy registry (deterministic / probabilistic / semantic).</li>
+        <li><strong>Spark-coupled domain logic</strong> → pure core, guarded by an import-purity test.</li>
+      </ul>
+    </div>
+    <p>The superseded v1 remains under <code>legacy/</code> for reference and migration — see its README for the full before/after.</p>
+
+    <div class="pager">
+      <a href="roadmap.html"><span class="pk">Prev · H</span>← Phased Roadmap</a>
+      <a class="next" href="index.html"><span class="pk">Back · A</span>Executive Summary →</a>
+    </div>
+  </main>
+</div>
+<script src="assets/nav.js"></script>
+</body>
+</html>

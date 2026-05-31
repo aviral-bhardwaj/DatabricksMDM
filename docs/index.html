@@ -4,7 +4,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Databricks-Native MDM — Architecture Blueprint</title>
-<meta name="description" content="An opinionated, SOLID-based blueprint for building a truly Databricks-native Master Data Management product on the lakehouse.">
+<meta name="description" content="An opinionated, SOLID-based blueprint AND working engine for a truly Databricks-native Master Data Management product on the lakehouse.">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Databricks-Native MDM — Blueprint &amp; Engine">
+<meta property="og:description" content="Not MDM bolted onto Databricks — engineered inside the lakehouse. SOLID + DDD blueprint, now backed by a real config-driven engine (33 tests, 0.1s).">
+<meta name="twitter:card" content="summary">
 <link rel="stylesheet" href="assets/style.css">
 </head>
 <body>
@@ -43,6 +47,7 @@
     <a href="blueprint.html"><span class="lt">F</span> Implementation</a>
     <a href="risks.html"><span class="lt">G</span> Risks &amp; Edge</a>
     <a href="roadmap.html"><span class="lt">H</span> Roadmap</a>
+    <a href="code.html"><span class="lt">I</span> The Engine (code)</a>
   </aside>
 
   <main class="content">
@@ -57,6 +62,11 @@
     <div class="callout native">
       <div class="ct">The one-sentence definition</div>
       <p><strong>Databricks-native MDM</strong> = the golden record is a governed Delta/UC object produced by declarative lakehouse pipelines, where match/merge/survivorship are versioned data + open code, governance is Unity Catalog (not a bespoke security model), and intelligence is MLflow/Model-Serving/Vector-Search operating in-place — with zero proprietary mastering store on the critical path.</p>
+    </div>
+
+    <div class="callout good">
+      <div class="ct">This is now built, not just designed</div>
+      <p>The repository ships a working engine that realizes this blueprint: a pure, Spark-free domain core (33 tests in ~0.1s), pluggable match strategies, union-find clustering, rules-as-data survivorship, Delta/DLT runtime, and config-driven multi-domain support. Run <code>python -m mdm demo</code> to resolve 16 multi-source records into 7 golden records with no cluster. See <a href="code.html">I · The Engine</a>.</p>
     </div>
 
     <h2>What this document delivers</h2>
@@ -88,6 +98,10 @@
       <a class="card" href="roadmap.html">
         <span class="lt">H</span><h3>Roadmap</h3>
         <p>MVP → v1 → enterprise scale, with the architectural milestone that gates each phase.</p>
+      </a>
+      <a class="card" href="code.html">
+        <span class="lt">I</span><h3>The Engine (code)</h3>
+        <p>The shipped implementation: three zones, code→blueprint mapping, how to run the demo + tests, and the v1 bugs fixed.</p>
       </a>
     </div>
 
