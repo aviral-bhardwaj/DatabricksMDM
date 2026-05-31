@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Databricks-Native MDM — Architecture Blueprint</title>
+<meta name="description" content="An opinionated, SOLID-based blueprint for building a truly Databricks-native Master Data Management product on the lakehouse.">
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<header class="topbar">
+  <button class="nav-toggle" aria-label="Menu">☰</button>
+  <a class="brand" href="index.html"><span class="dot"></span> Databricks-Native MDM</a>
+  <span class="tag">Architecture Blueprint</span>
+  <span class="spacer"></span>
+  <a class="gh" href="https://github.com/aviral-bhardwaj/databricksmdm">GitHub ↗</a>
+</header>
+
+<section class="hero">
+  <div class="eyebrow">Principal architecture blueprint</div>
+  <h1>A Master Data Management product engineered <em>inside</em> the lakehouse — not bolted onto it.</h1>
+  <p class="lead">Most "MDM on Databricks" is a legacy mastering hub with a Spark connector taped to the front. This is the opposite: a product where the golden record is a governed Delta table, identity resolution is a declarative pipeline, survivorship is data, lineage is the audit trail, and the AI lives next to the data it reasons about. Designed first-principles, governed by Unity Catalog, structured with SOLID.</p>
+  <div class="pillrow">
+    <span class="pill">Delta Lake</span>
+    <span class="pill">Unity Catalog</span>
+    <span class="pill">Lakeflow / DLT</span>
+    <span class="pill">Workflows</span>
+    <span class="pill">MLflow + Model Serving</span>
+    <span class="pill">Vector Search</span>
+    <span class="pill">System Tables</span>
+    <span class="pill">SOLID + DDD</span>
+  </div>
+</section>
+
+<div class="layout">
+  <aside class="sidebar" id="sidebar">
+    <h4>Blueprint</h4>
+    <a href="index.html"><span class="lt">A</span> Executive Summary</a>
+    <a href="market.html"><span class="lt">B</span> Market Landscape</a>
+    <a href="native.html"><span class="lt">C</span> What "Native" Requires</a>
+    <a href="solid.html"><span class="lt">D</span> SOLID Architecture</a>
+    <a href="domain.html"><span class="lt">E</span> Domain &amp; Contexts</a>
+    <a href="blueprint.html"><span class="lt">F</span> Implementation</a>
+    <a href="risks.html"><span class="lt">G</span> Risks &amp; Edge</a>
+    <a href="roadmap.html"><span class="lt">H</span> Roadmap</a>
+  </aside>
+
+  <main class="content">
+    <div class="eyebrow">A · Executive Summary</div>
+    <h1>The thesis</h1>
+    <p class="lead">A Databricks-native MDM is not an application that <em>runs on</em> Databricks. It is a <strong>data product</strong> whose system of record, system of governance, system of processing, and system of intelligence are all the lakehouse itself.</p>
+
+    <p>The mastering industry was built around a closed <strong>hub-and-spoke</strong> model: pull data into a proprietary store, master it inside an engine nobody else can see, and push golden records back out through adapters. That topology made sense in 2010. On a lakehouse it is an anti-pattern — it re-creates the very data silo Databricks exists to eliminate, and it strands the most valuable asset in the enterprise (the trusted golden record) outside the catalog that governs everything else.</p>
+
+    <p>This blueprint argues for the inverse. <strong>The data never leaves.</strong> Sources land as Delta. Standardization, matching, survivorship, and publication are declarative pipelines over Delta. The golden record is a Unity Catalog table with row/column security, lineage, and time travel — queryable by every BI tool, notebook, and model in the estate without an export. Stewardship is the only component that legitimately lives outside, and we say exactly why.</p>
+
+    <div class="callout native">
+      <div class="ct">The one-sentence definition</div>
+      <p><strong>Databricks-native MDM</strong> = the golden record is a governed Delta/UC object produced by declarative lakehouse pipelines, where match/merge/survivorship are versioned data + open code, governance is Unity Catalog (not a bespoke security model), and intelligence is MLflow/Model-Serving/Vector-Search operating in-place — with zero proprietary mastering store on the critical path.</p>
+    </div>
+
+    <h2>What this document delivers</h2>
+    <div class="cards">
+      <a class="card" href="market.html">
+        <span class="lt">B</span><h3>Market Landscape</h3>
+        <p>Informatica, Reltio, Semarchy, Profisee, Ataccama, SAP MDG — plus the lakehouse-native insurgents (LakeFusion, Zingg). Full comparison matrix + copy/avoid/redesign.</p>
+      </a>
+      <a class="card" href="native.html">
+        <span class="lt">C</span><h3>What "Native" Requires</h3>
+        <p>The four tiers of MDM, why most "Databricks MDM" fails the native test, and the explicit anti-pattern catalogue.</p>
+      </a>
+      <a class="card" href="solid.html">
+        <span class="lt">D</span><h3>SOLID Architecture</h3>
+        <p>Eleven layers mapped to Databricks services. Every SOLID principle in MDM terms, with the contracts and the failure modes.</p>
+      </a>
+      <a class="card" href="domain.html">
+        <span class="lt">E</span><h3>Domain &amp; Contexts</h3>
+        <p>Nine bounded contexts, the canonical entity model, aggregates, domain events, and data contracts.</p>
+      </a>
+      <a class="card" href="blueprint.html">
+        <span class="lt">F</span><h3>Implementation</h3>
+        <p>Repo layout, medallion-for-MDM, catalog strategy, multi-domain support, batch + streaming, functional + non-functional design.</p>
+      </a>
+      <a class="card" href="risks.html">
+        <span class="lt">G</span><h3>Risks &amp; Edge</h3>
+        <p>Where this is harder than buying Reltio, where incumbents stay stronger, and the whitespace only a lakehouse can own.</p>
+      </a>
+      <a class="card" href="roadmap.html">
+        <span class="lt">H</span><h3>Roadmap</h3>
+        <p>MVP → v1 → enterprise scale, with the architectural milestone that gates each phase.</p>
+      </a>
+    </div>
+
+    <h2>Five opinions this blueprint will defend</h2>
+    <ol>
+      <li><strong>The "Master/Trust" layer is real and Gold is not enough.</strong> Bronze/Silver/Gold describes <em>refinement</em>; it says nothing about <em>identity</em>. MDM needs a fourth tier where survivorship, cluster lineage, and trust scores are first-class. We justify it in <a href="solid.html">section D</a>.</li>
+      <li><strong>Match logic is a strategy, never a hardcode.</strong> A Random Forest welded into a matching notebook (as in many starter repos, including the one this product replaces) violates Open/Closed and makes every new domain a code fork. Matching is a pluggable contract.</li>
+      <li><strong>Stewardship UI belongs <em>outside</em> Databricks — and that's correct, not a compromise.</strong> Databricks is a data-and-compute plane, not an OLTP app server. We push case state into Delta and render the workbench in a real web app. <a href="risks.html">Section G</a> defends the boundary.</li>
+      <li><strong>Semantic matching is the native differentiator.</strong> Vector Search + an embedding model + an LLM adjudicator, all in-platform, is something no closed hub can match without exfiltrating your data. This is the moat.</li>
+      <li><strong>Governance is not a feature you build — it's Unity Catalog you adopt.</strong> Re-implementing ACLs, masking, and lineage inside an MDM app is the single clearest signal that a product is <em>not</em> native.</li>
+    </ol>
+
+    <div class="callout anti">
+      <div class="ct">Anti-pattern · the tell-tale sign</div>
+      <p>If your "Databricks MDM" could be lifted onto Snowflake or Postgres by swapping the JDBC string, it was never native. Native means the architecture <em>cannot</em> be expressed without Delta semantics, UC governance, and declarative lakehouse pipelines.</p>
+    </div>
+
+    <p class="footer-note">This blueprint is intentionally opinionated and critical. It assumes a highly technical reader who could implement any part of it. Vendor analysis reflects public positioning as of mid-2026 (incl. the SAP→Reltio acquisition and Reltio FERN / Informatica CLAIRE AI directions). Navigate with the sidebar, or start with the <a href="native.html">native-requirements section</a>.</p>
+
+    <div class="pager">
+      <span></span>
+      <a class="next" href="market.html"><span class="pk">Next ·  B</span>Market Landscape &amp; Competitor Research →</a>
+    </div>
+  </main>
+</div>
+<script src="assets/nav.js"></script>
+</body>
+</html>

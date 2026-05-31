@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>C · What "Databricks-Native" Requires — MDM Blueprint</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<header class="topbar">
+  <button class="nav-toggle" aria-label="Menu">☰</button>
+  <a class="brand" href="index.html"><span class="dot"></span> Databricks-Native MDM</a>
+  <span class="tag">Architecture Blueprint</span>
+  <span class="spacer"></span>
+  <a class="gh" href="https://github.com/aviral-bhardwaj/databricksmdm">GitHub ↗</a>
+</header>
+
+<div class="layout">
+  <aside class="sidebar" id="sidebar">
+    <h4>Blueprint</h4>
+    <a href="index.html"><span class="lt">A</span> Executive Summary</a>
+    <a href="market.html"><span class="lt">B</span> Market Landscape</a>
+    <a href="native.html"><span class="lt">C</span> What "Native" Requires</a>
+    <a href="solid.html"><span class="lt">D</span> SOLID Architecture</a>
+    <a href="domain.html"><span class="lt">E</span> Domain &amp; Contexts</a>
+    <a href="blueprint.html"><span class="lt">F</span> Implementation</a>
+    <a href="risks.html"><span class="lt">G</span> Risks &amp; Edge</a>
+    <a href="roadmap.html"><span class="lt">H</span> Roadmap</a>
+  </aside>
+
+  <main class="content">
+    <div class="eyebrow">C · What "Databricks-Native" Really Requires</div>
+    <h1>Native is an architectural property, not a logo on a slide</h1>
+    <p class="lead">Three different products can all claim "MDM on Databricks" and only one passes the test. The test is simple: remove every proprietary, non-lakehouse component and ask whether the product still produces and governs a golden record. If it can't, it was integration, not nativeness.</p>
+
+    <h2>The four tiers, precisely</h2>
+    <pre>
+ TIER 1 — Legacy hub                 TIER 2 — Cloud / SaaS hub
+ ┌───────────────────────┐          ┌───────────────────────┐
+ │  App server + RDBMS    │          │  Vendor multi-tenant   │
+ │  proprietary store     │          │  cloud (opaque)        │
+ │  own security model    │          │  own security model    │
+ └──────────▲────────────┘          └──────────▲────────────┘
+   batch ETL│  push-back              REST/CDC  │  push-back
+            │                                   │
+   [ your data, copied in & out — master lives elsewhere ]
+
+ TIER 3 — Integrated WITH Databricks      TIER 4 — NATIVE in lakehouse
+ ┌───────────────────────┐               ┌──────────────────────────┐
+ │  External MDM hub      │               │  Delta tables (Bronze..  │
+ │  + Spark/Delta         │               │   ..Master/Trust..Gold)  │
+ │    connectors          │               │  Lakeflow/DLT pipelines  │
+ │  Delta = staging copy  │               │  Unity Catalog = gov.    │
+ └──────────▲────────────┘               │  MLflow/Vector = brains  │
+   sync     │  master still in hub        │  NO proprietary store    │
+            │                             └──────────────────────────┘
+   "looks native, isn't"                    master IS a UC object
+    </pre>
+    <div class="diagram-cap">The jump from Tier 3 to Tier 4 is the entire product thesis: delete the hub.</div>
+
+    <h2>Why most "MDM on Databricks" is still not native</h2>
+    <p>Three failure shapes dominate, and the codebase this product replaces exhibited the third.</p>
+    <ol>
+      <li><strong>The connector illusion (Tier 3).</strong> An external hub gains a Delta connector and the deck says "Databricks-native." But the master, the matching, the trust model, and the stewardship all execute in the hub. Databricks is a landing zone. Delete Databricks and the product is unharmed — the definition of <em>not</em> native.</li>
+      <li><strong>The lift-and-shift (Tier 1.5).</strong> A vendor containerizes its app server and runs it next to a workspace. Same monolith, new address. None of Delta's time travel, UC's lineage, or Spark's scale is on the critical path.</li>
+      <li><strong>The transplant (the trap this blueprint exits).</strong> Hand-written PySpark notebooks that re-implement classic MDM imperatively: a <code>EntityMatcher</code> class with a hardcoded Random Forest, a <code>GoldenRecordBuilder</code> with branching survivorship, a bolt-on FastAPI as the only serving path, and README-only governance. It <em>runs</em> on Databricks but it ignores everything that makes Databricks Databricks. It would port to Snowflake by changing a connection string. That portability is the proof of non-nativeness.</li>
+    </ol>
+
+    <div class="callout anti">
+      <div class="ct">Anti-pattern catalogue · the "not truly native" tells</div>
+      <p>If you see these, you have a Tier&nbsp;1–3 product wearing a lakehouse costume:</p>
+      <ul>
+        <li><strong>JDBC-in / JDBC-out as the spine.</strong> Sources read over JDBC, masters written over JDBC, Delta only as scratch. The lakehouse is bypassed.</li>
+        <li><strong>An external match-engine round-trip.</strong> Spark ships candidate pairs to a proprietary matcher and waits. Latency, cost, and lock-in, with no in-place explainability.</li>
+        <li><strong>The golden record outside Unity Catalog.</strong> The most governed asset in the company lives where UC can't apply row filters, column masks, lineage, or tags.</li>
+        <li><strong>A re-implemented security model.</strong> The app has its own users, roles, and ACLs that shadow UC. Two sources of truth for "who can see this PII."</li>
+        <li><strong>A REST API as the <em>only</em> way to read the master.</strong> BI, notebooks, and models can't query it without going through an app tier. Data proximity destroyed.</li>
+        <li><strong>Imperative notebooks instead of declarative pipelines.</strong> No DLT/Lakeflow expectations, no managed lineage, no incremental semantics — just procedural Spark and cron.</li>
+        <li><strong>No use of system tables.</strong> Audit, lineage, billing, and quality are hand-rolled instead of read from <code>system.access</code>, <code>system.lineage</code>, <code>system.billing</code>.</li>
+        <li><strong>Hardcoded ML on the critical path.</strong> A model baked into match code, untracked in MLflow, unservable, unversioned, un-A/B-testable.</li>
+        <li><strong>Cloud-portable by accident.</strong> Swap the storage layer and nothing breaks — because nothing depended on Delta/UC semantics.</li>
+      </ul>
+    </div>
+
+    <h2>The seven requirements of a native MDM</h2>
+    <div class="tablewrap">
+    <table>
+      <thead><tr><th>#</th><th>Requirement</th><th>What it means concretely</th><th>Databricks primitive</th></tr></thead>
+      <tbody>
+        <tr><td>1</td><td><strong>Master is a governed lakehouse object</strong></td><td>Golden records are Delta tables in your catalog, with time travel, CDF, and UC policies — not rows in a vendor DB.</td><td>Delta Lake + Unity Catalog</td></tr>
+        <tr><td>2</td><td><strong>Pipelines are declarative</strong></td><td>Ingest→standardize→match→merge→publish expressed as Lakeflow/DLT with expectations, managed incrementally, with lineage for free.</td><td>Lakeflow Declarative Pipelines (DLT) + Workflows</td></tr>
+        <tr><td>3</td><td><strong>Governance is adopted, not built</strong></td><td>Access, masking, lineage, tags, audit all come from UC. The product writes <em>zero</em> custom security code.</td><td>Unity Catalog + system tables</td></tr>
+        <tr><td>4</td><td><strong>Intelligence runs in-place</strong></td><td>Embeddings, vector match, and LLM adjudication execute against the data without exfiltration; models are tracked + served.</td><td>MLflow + Model Serving + Vector Search</td></tr>
+        <tr><td>5</td><td><strong>Logic is open and versioned</strong></td><td>Match/merge/survivorship are rules-as-data + open code, diffable in Git, replayable against history.</td><td>Delta config tables + Asset Bundles + Git</td></tr>
+        <tr><td>6</td><td><strong>Activation is zero-copy by default</strong></td><td>Downstream reads the master directly or via Delta Sharing/CDF; export adapters are the exception, not the spine.</td><td>Delta Sharing + Change Data Feed</td></tr>
+        <tr><td>7</td><td><strong>Compute is elastic + serverless-capable</strong></td><td>Billion-row blocking/matching scales on Spark/Photon; cost is DBUs you control, not seats you rent.</td><td>Photon + serverless + autoscaling jobs</td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <div class="callout native">
+      <div class="ct">The litmus test</div>
+      <p>Pull the plug on every non-Databricks component. A native MDM still ingests, standardizes, matches, masters, governs, and serves — because all of that <em>is</em> Delta, UC, Lakeflow, and MLflow. A Tier 1–3 product goes dark, because its brain was always somewhere else.</p>
+    </div>
+
+    <h2>What legitimately lives outside — and why that's still native</h2>
+    <p>Native does not mean "everything inside Databricks." It means "the data, governance, processing, and intelligence are the lakehouse." Two things correctly sit outside, and pretending otherwise produces a worse product:</p>
+    <ul>
+      <li><span class="badge out">outside</span> <strong>The stewardship UI.</strong> Databricks is a data-and-compute plane, not an OLTP application server for thousands of concurrent steward clicks, optimistic locking, and rich form UX. The <em>state</em> (cases, decisions, assignments) lives in Delta; the <em>interface</em> is a real web app reading/writing those tables. The audit trail is the data — fully native — while the pixels are not. <a href="risks.html">Section G</a> defends this in depth.</li>
+      <li><span class="badge out">outside</span> <strong>High-fanout synchronous APIs.</strong> If an operational system needs sub-10ms single-record lookups at high QPS, front the Gold/Master tables with an online store or Lakebase/serving layer — fed <em>from</em> the lakehouse, not a separate source of truth.</li>
+    </ul>
+    <p>Everything else — and especially the golden record itself — belongs inside.</p>
+
+    <div class="pager">
+      <a href="market.html"><span class="pk">Prev · B</span>← Market Landscape</a>
+      <a class="next" href="solid.html"><span class="pk">Next · D</span>SOLID Product Architecture →</a>
+    </div>
+  </main>
+</div>
+<script src="assets/nav.js"></script>
+</body>
+</html>

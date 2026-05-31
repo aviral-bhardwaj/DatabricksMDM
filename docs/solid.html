@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>D · SOLID Product Architecture — MDM Blueprint</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<header class="topbar">
+  <button class="nav-toggle" aria-label="Menu">☰</button>
+  <a class="brand" href="index.html"><span class="dot"></span> Databricks-Native MDM</a>
+  <span class="tag">Architecture Blueprint</span>
+  <span class="spacer"></span>
+  <a class="gh" href="https://github.com/aviral-bhardwaj/databricksmdm">GitHub ↗</a>
+</header>
+
+<div class="layout">
+  <aside class="sidebar" id="sidebar">
+    <h4>Blueprint</h4>
+    <a href="index.html"><span class="lt">A</span> Executive Summary</a>
+    <a href="market.html"><span class="lt">B</span> Market Landscape</a>
+    <a href="native.html"><span class="lt">C</span> What "Native" Requires</a>
+    <a href="solid.html"><span class="lt">D</span> SOLID Architecture</a>
+    <a href="domain.html"><span class="lt">E</span> Domain &amp; Contexts</a>
+    <a href="blueprint.html"><span class="lt">F</span> Implementation</a>
+    <a href="risks.html"><span class="lt">G</span> Risks &amp; Edge</a>
+    <a href="roadmap.html"><span class="lt">H</span> Roadmap</a>
+  </aside>
+
+  <main class="content">
+    <div class="eyebrow">D · SOLID-Based Product Architecture</div>
+    <h1>Eleven layers, five principles, one rule: domain logic never knows it's on Spark</h1>
+    <p class="lead">The architecture has two orthogonal axes. Vertically: eleven processing layers, each mapped to a Databricks-native service. Horizontally: a SOLID decomposition that keeps domain logic, pipeline orchestration, and infrastructure strictly separated so a new domain or a new match algorithm is config or a plugin — never a fork.</p>
+
+    <h2>The layered architecture &amp; its Databricks mapping</h2>
+    <pre>
+                         ┌────────────────────────────────────────────┐
+   ACTIVATION / SERVING  │ Gold + Master views · Delta Sharing · CDF · │  ← BI, apps, models,
+                         │ online store / serving for low-latency      │    Genie, reverse-ETL
+                         └────────────────────▲───────────────────────┘
+                         ┌────────────────────┴───────────────────────┐
+   AI AUGMENTATION       │ Embeddings · Vector Search · LLM adjudicate │  MLflow · Model Serving
+                         │ block-suggest · steward copilot             │  Vector Search
+                         └────────────────────▲───────────────────────┘
+   ┌─────────────────────┴─────────────────────────────────────────────┐
+   │                     M A S T E R  /  T R U S T   L A Y E R          │  ← the 4th medallion tier
+   │  GoldenRecord · SurvivorAttribute(+trust) · Cluster · xref lineage │     Delta + CDF + UC
+   └──────▲──────────────▲───────────────▲───────────────▲─────────────┘
+          │              │               │               │
+  SURVIVORSHIP    GOLDEN RECORD     IDENTITY RES.    RELATIONSHIP/HIERARCHY
+  rules-as-data   assemble/merge    block→match→     graph build (GraphFrames
+  (Delta config)  /unmerge          cluster          /Delta edges)
+          ▲              ▲               ▲               ▲
+   ┌──────┴──────────────┴───────────────┴───────────────┴─────────────┐
+   │  STANDARDIZATION & QUALITY   parse·normalize·validate·score (DLT   │  Lakeflow/DLT
+   │                              expectations) → Silver                │  expectations
+   └────────────────────────────────▲──────────────────────────────────┘
+   ┌────────────────────────────────┴──────────────────────────────────┐
+   │  INGESTION   Auto Loader · LakeFlow Connect · streaming/batch →    │  Auto Loader
+   │              Bronze (raw, append-only, schema-evolving)            │  Lakeflow Connect
+   └────────────────────────────────▲──────────────────────────────────┘
+                                     │
+   ═══════════════ CROSS-CUTTING (every layer) ═══════════════════════════
+   GOVERNANCE/POLICY   Unity Catalog: ACLs, row/col masking, tags, lineage
+   OBSERVABILITY       system.access · system.lineage · system.billing · DLT event log
+   STEWARDSHIP STATE   Delta case tables  ⇄  external workbench UI (outside DBX)
+   ORCHESTRATION       Databricks Workflows (DAG, retries, schedules, triggers)
+    </pre>
+    <div class="diagram-cap">Vertical layers = dataflow. Cross-cutting band = governance, observability, stewardship state, orchestration — none re-implemented, all adopted from platform services.</div>
+
+    <h3>Layer-to-service decision matrix</h3>
+    <div class="tablewrap">
+    <table>
+      <thead><tr><th>Layer</th><th>Databricks-native service</th><th>Inside / Outside</th><th>Why this choice</th></tr></thead>
+      <tbody>
+        <tr><td>Ingestion</td><td>Auto Loader, Lakeflow Connect, Structured Streaming</td><td><span class="badge in">in</span></td><td>Incremental file/CDC ingest with schema evolution → Bronze. No external staging DB.</td></tr>
+        <tr><td>Standardization &amp; Quality</td><td>Lakeflow/DLT + expectations, PySpark UDFs/pandas UDFs, SQL</td><td><span class="badge in">in</span></td><td>Declarative transforms with quarantine on failed expectations; quality score is a column, not a side system.</td></tr>
+        <tr><td>Identity resolution</td><td>Spark/Photon blocking + match strategies; optional Zingg engine</td><td><span class="badge in">in</span></td><td>Billion-pair fuzzy match is a distributed-compute problem — Spark's home turf.</td></tr>
+        <tr><td>Golden record</td><td>Delta MERGE, CDF, deterministic assemble jobs</td><td><span class="badge in">in</span></td><td>Merge/unmerge are Delta operations; CDF gives downstream incremental deltas for free.</td></tr>
+        <tr><td>Survivorship</td><td>Rules-as-data in Delta config + pluggable rule evaluators</td><td><span class="badge in">in</span></td><td>Rules versioned + replayable via time travel; A/B a survivorship change by reprocessing history.</td></tr>
+        <tr><td>Relationship / hierarchy</td><td>GraphFrames / Delta edge tables; Vector Search for soft links</td><td><span class="badge in">in</span></td><td>Graph lives next to entities; no separate graph DB to sync.</td></tr>
+        <tr><td>AI augmentation</td><td>MLflow, Model Serving, Vector Search, FM/LLM endpoints</td><td><span class="badge in">in</span></td><td>Models tracked, served, A/B-tested; semantic match against data in-place.</td></tr>
+        <tr><td>Policy / governance</td><td>Unity Catalog (ACL, masking, tags, lineage, attribute-based)</td><td><span class="badge in">in</span></td><td>One governance plane for the whole estate. Build nothing.</td></tr>
+        <tr><td>Observability</td><td>System tables + DLT event log + Lakehouse Monitoring</td><td><span class="badge in">in</span></td><td>Audit/lineage/cost are queries, not bespoke logging.</td></tr>
+        <tr><td>Orchestration</td><td>Databricks Workflows (+ Asset Bundles for deploy)</td><td><span class="badge in">in</span></td><td>DAG, retries, file/streaming triggers, env-aware deploys.</td></tr>
+        <tr><td>Stewardship UI</td><td>External web app over Delta case tables (+ optional Databricks App)</td><td><span class="badge out">out</span></td><td>OLTP-style interactive UX is not a Spark workload. State stays native; pixels don't.</td></tr>
+        <tr><td>Low-latency serving</td><td>Online store / Lakebase / Model Serving feature lookup</td><td><span class="badge out">out</span>*</td><td>Sub-10ms single-record reads need an online tier fed from Delta (*still part of the platform).</td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <h2>Why a fourth medallion tier — the Master / Trust layer</h2>
+    <p>Bronze/Silver/Gold is a <em>refinement</em> gradient: raw → cleaned → business-ready. It is silent on <strong>identity</strong>, which is the entire point of MDM. Cramming golden records into Gold conflates two unrelated concerns — "this table is curated for consumption" vs. "these rows are the surviving truth about a resolved entity with a trust score and a merge lineage." That conflation is why transplanted MDMs feel bolted-on.</p>
+    <div class="tablewrap">
+    <table>
+      <thead><tr><th>Tier</th><th>Question it answers</th><th>Key objects</th><th>Grain</th></tr></thead>
+      <tbody>
+        <tr><td>Bronze</td><td>What did the source say, verbatim?</td><td>RawRecord</td><td>1 row / source event (append-only)</td></tr>
+        <tr><td>Silver</td><td>What does it mean, cleaned &amp; validated?</td><td>StandardizedRecord (+quality score)</td><td>1 row / source record, conformed</td></tr>
+        <tr><td class="y">Master / Trust</td><td><strong>Who is this, really, and how sure are we?</strong></td><td>Cluster, GoldenRecord, SurvivorAttribute(+trust), xref &amp; merge lineage</td><td>1 row / resolved entity + cluster membership</td></tr>
+        <tr><td>Gold</td><td>How do consumers want to see it?</td><td>Domain marts, hierarchy views, serving projections</td><td>Consumption-shaped (denormalized, joined)</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <div class="callout good">
+      <div class="ct">Decision</div>
+      <p>Yes, justify a dedicated <strong>Master/Trust</strong> tier (physically a schema, e.g. <code>mdm_&lt;domain&gt;.master</code>). Gold is then a <em>projection</em> of Master for consumption — which keeps survivorship/lineage out of consumer marts and lets you re-shape Gold without re-resolving identity.</p>
+    </div>
+
+    <h2>SOLID, in MDM terms</h2>
+    <p>The governing rule for all five: <strong>domain logic (what a "match" or "survivor" means) must not import Spark, Delta, or any infrastructure.</strong> Pipelines orchestrate; infrastructure persists; domain decides. This is what makes the same match strategy testable on a pandas DataFrame in CI and runnable on a billion rows in production.</p>
+
+    <h3>S · Single Responsibility</h3>
+    <p><strong>Meaning here:</strong> each component owns exactly one reason to change. Standardization changes when normalization rules change. Matching changes when match logic changes. They are not the same class.</p>
+    <div class="callout anti"><div class="ct">Violation</div><p>The transplant's <code>GoldenRecordBuilder</code> that standardizes, matches, merges, <em>and</em> applies survivorship in one 22-KB module. A change to phone normalization risks breaking survivorship. Every edit is a regression-test of everything.</p></div>
+    <div class="callout good"><div class="ct">Pattern</div><p>Split into <code>Standardizer</code>, <code>Matcher</code>, <code>Clusterer</code>, <code>GoldenRecordAssembler</code>, <code>SurvivorshipResolver</code> — each a separate package with its own tests, wired together by an orchestration layer that owns no domain logic.</p></div>
+
+    <h3>O · Open / Closed</h3>
+    <p><strong>Meaning here:</strong> add a new source, match algorithm, or survivorship rule <em>without editing</em> existing code — by registering a new strategy.</p>
+    <div class="callout anti"><div class="ct">Violation</div><p>A hardcoded Random Forest inside the matcher and an <code>if source == "SAP"</code> ladder. Supporting probabilistic + semantic match means surgery on the matcher; adding a supplier domain means copy-pasting the customer pipeline.</p></div>
+    <div class="callout good"><div class="ct">Pattern</div><p>A <code>MatchStrategy</code> registry. <code>DeterministicMatch</code>, <code>ProbabilisticMatch</code>, <code>VectorSemanticMatch</code>, <code>ZinggMatch</code> all implement the same contract and are selected by config. New algorithm = new class + a YAML line.</p></div>
+
+    <h3>L · Liskov Substitution</h3>
+    <p><strong>Meaning here:</strong> any strategy implementing a contract must be swappable without breaking the pipeline. A semantic matcher and a deterministic matcher must honour the same input/output schema and the same score semantics (0–1, higher = more confident).</p>
+    <div class="callout anti"><div class="ct">Violation</div><p>One matcher returns booleans, another returns distances, a third returns labels. The clustering layer must special-case each — substitution is impossible and the abstraction is a lie.</p></div>
+    <div class="callout good"><div class="ct">Pattern</div><p>A typed <code>MatchResult</code> (candidate pair → calibrated probability + explanation). Every strategy returns it. Calibration (e.g. isotonic) makes scores comparable, so clustering treats all strategies uniformly.</p></div>
+
+    <h3>I · Interface Segregation</h3>
+    <p><strong>Meaning here:</strong> a source connector shouldn't be forced to implement streaming if it's batch-only; a survivorship rule shouldn't depend on the publishing interface.</p>
+    <div class="callout anti"><div class="ct">Violation</div><p>A fat <code>Connector</code> interface with <code>readBatch</code>, <code>readStream</code>, <code>writeBack</code>, <code>schemaDrift</code>, <code>validate</code> — so a simple CSV connector must stub five methods it never uses.</p></div>
+    <div class="callout good"><div class="ct">Pattern</div><p>Small role interfaces: <code>BatchSource</code>, <code>StreamSource</code>, <code>CDCSource</code>, <code>SchemaProvider</code>. A connector composes only the roles it supports.</p></div>
+
+    <h3>D · Dependency Inversion</h3>
+    <p><strong>Meaning here — the keystone.</strong> High-level mastering policy depends on abstractions, not on Spark or Delta. Infrastructure is injected.</p>
+    <div class="callout anti"><div class="ct">Violation</div><p>Survivorship logic calls <code>spark.read.table(...)</code> and <code>df.write.format("delta")</code> directly. Now you can't unit-test it without a cluster, can't reuse it for streaming, and can't port a rule into a serving path.</p></div>
+    <div class="callout good"><div class="ct">Pattern</div><p>Domain code receives a <code>RecordRepository</code> port; <code>DeltaRecordRepository</code> and <code>InMemoryRecordRepository</code> are adapters. The survivorship resolver is pure: records in, survivor out. Spark appears only in the adapter and the pipeline wiring.</p></div>
+
+    <h2>The contracts (ports)</h2>
+    <p>These nine interfaces are the product's spine. Domain logic depends only on these; Databricks-specific adapters implement them. Shown in Python-ish pseudocode for precision, not as a code deliverable.</p>
+    <pre>
+# ---- ingestion -------------------------------------------------------------
+class BatchSource(Protocol):
+    def read(self, ctx: RunContext) -&gt; RecordFrame: ...
+class StreamSource(Protocol):
+    def stream(self, ctx: RunContext) -&gt; RecordStream: ...
+class SchemaProvider(Protocol):
+    def schema(self) -&gt; CanonicalSchema: ...        # maps source → canonical
+
+# ---- standardization -------------------------------------------------------
+class Standardizer(Protocol):
+    # pure: no Spark. operates on a domain Record, returns StandardizedRecord
+    def standardize(self, r: Record, policy: StdPolicy) -&gt; StandardizedRecord: ...
+class QualityRule(Protocol):
+    def evaluate(self, r: StandardizedRecord) -&gt; QualityVerdict: ...   # score + flags
+
+# ---- matching --------------------------------------------------------------
+class BlockingStrategy(Protocol):
+    def keys(self, r: StandardizedRecord) -&gt; list[BlockKey]: ...
+class MatchStrategy(Protocol):
+    def score(self, a: StandardizedRecord, b: StandardizedRecord) -&gt; MatchResult: ...
+    # MatchResult = (prob: float[0..1], explanation: dict, strategy_id: str)
+
+# ---- mastering -------------------------------------------------------------
+class ClusterPolicy(Protocol):
+    def cluster(self, pairs: Iterable[MatchResult]) -&gt; Iterable[Cluster]: ...
+class SurvivorshipRule(Protocol):
+    def survive(self, attr: str, candidates: list[AttrValue],
+                trust: TrustModel) -&gt; SurvivorAttribute: ...   # +lineage
+
+# ---- stewardship & workflow ------------------------------------------------
+class StewardshipTask(Protocol):
+    def open_case(self, cluster: Cluster, reason: str) -&gt; StewardshipCase: ...
+class ApprovalWorkflow(Protocol):
+    def route(self, case: StewardshipCase) -&gt; WorkflowState: ...     # state machine
+
+# ---- publishing ------------------------------------------------------------
+class PublicationAdapter(Protocol):
+    def publish(self, events: Iterable[PublishEvent]) -&gt; PublishReceipt: ...
+    # impls: DeltaSharingAdapter, CDFAdapter, KafkaAdapter, JdbcAdapter, ReverseETLAdapter
+
+# ---- the only Spark-aware boundary ----------------------------------------
+class RecordRepository(Protocol):           # the injected port (DIP keystone)
+    def load(self, ref: TableRef) -&gt; RecordFrame: ...
+    def upsert(self, ref: TableRef, frame: RecordFrame) -&gt; None: ...
+# DeltaRecordRepository  → real Spark/Delta
+# InMemoryRecordRepository → pandas, used in CI unit tests
+    </pre>
+    <div class="callout native">
+      <div class="ct">The separation, stated once</div>
+      <p><strong>Domain</strong> (Standardizer, MatchStrategy, SurvivorshipRule, ClusterPolicy) = pure, Spark-free, unit-tested on pandas. <strong>Orchestration</strong> (Lakeflow/DLT graphs, Workflows) = wires ports together, owns no business rules. <strong>Infrastructure</strong> (DeltaRecordRepository, adapters, Vector Search client) = the only code that imports Spark/Delta/UC. Cross this wiring up and you get the transplant; honour it and a new domain is a config bundle, not a fork.</p>
+    </div>
+
+    <div class="pager">
+      <a href="native.html"><span class="pk">Prev · C</span>← What "Native" Requires</a>
+      <a class="next" href="domain.html"><span class="pk">Next · E</span>Domain Model &amp; Bounded Contexts →</a>
+    </div>
+  </main>
+</div>
+<script src="assets/nav.js"></script>
+</body>
+</html>

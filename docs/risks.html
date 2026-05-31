@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>G · Risks, Trade-offs &amp; Differentiators — MDM</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+<header class="topbar">
+  <button class="nav-toggle" aria-label="Menu">☰</button>
+  <a class="brand" href="index.html"><span class="dot"></span> Databricks-Native MDM</a>
+  <span class="tag">Architecture Blueprint</span>
+  <span class="spacer"></span>
+  <a class="gh" href="https://github.com/aviral-bhardwaj/databricksmdm">GitHub ↗</a>
+</header>
+
+<div class="layout">
+  <aside class="sidebar" id="sidebar">
+    <h4>Blueprint</h4>
+    <a href="index.html"><span class="lt">A</span> Executive Summary</a>
+    <a href="market.html"><span class="lt">B</span> Market Landscape</a>
+    <a href="native.html"><span class="lt">C</span> What "Native" Requires</a>
+    <a href="solid.html"><span class="lt">D</span> SOLID Architecture</a>
+    <a href="domain.html"><span class="lt">E</span> Domain &amp; Contexts</a>
+    <a href="blueprint.html"><span class="lt">F</span> Implementation</a>
+    <a href="risks.html"><span class="lt">G</span> Risks &amp; Edge</a>
+    <a href="roadmap.html"><span class="lt">H</span> Roadmap</a>
+  </aside>
+
+  <main class="content">
+    <div class="eyebrow">G · Critical Risks, Trade-offs &amp; Differentiators</div>
+    <h1>Be honest about what you give up — and ruthless about what you uniquely gain</h1>
+    <p class="lead">Building native means out-engineering thirty years of incumbent investment in some areas. You will not win all of them. The discipline is knowing which battles to concede (buy/borrow) and which constitute a moat no closed hub can cross.</p>
+
+    <h2>Where incumbents remain genuinely stronger</h2>
+    <div class="tablewrap">
+    <table>
+      <thead><tr><th>Area</th><th>Why they win</th><th>Mitigation for a native product</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Stewardship UX maturity</strong></td><td>15+ yrs of steward workflows, bulk ops, side-by-side compare, role-rich UI (Reltio, Semarchy)</td><td>Don't rebuild it badly. Ship a focused workbench over Delta case tables; integrate a best-of-breed UI; concede polish at MVP.</td></tr>
+        <tr><td><strong>Packaged domain models</strong></td><td>OOTB party/product/healthcare/pharma models + validations (Informatica, SAP MDG)</td><td>Ship domain <em>config templates</em>, not blanks. Borrow open schemas. Accept this is a v1→enterprise gap.</td></tr>
+        <tr><td><strong>OOTB connectors</strong></td><td>Hundreds of certified source/target adapters</td><td>Lakeflow Connect + Auto Loader cover the lakehouse path; build the long tail incrementally; reverse-ETL for activation.</td></tr>
+        <tr><td><strong>Pre-tuned match for niche domains</strong></td><td>Decades of tuned match rules for, e.g., pharma HCP/HCO</td><td>Active-learning (Zingg-style) + LLM adjudication closes the gap faster than rule-writing, but tuning is still real work.</td></tr>
+        <tr><td><strong>Turnkey TCO clarity</strong></td><td>"Buy SKU, get MDM" — predictable, low-build</td><td>Native is a build. Honest framing: lower run cost + higher openness in exchange for engineering investment.</td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <h2>Why stewardship UI staying outside is correct (not a cop-out)</h2>
+    <p>The single most common objection: "if it's native, why isn't the UI in Databricks?" Because forcing an interactive, high-concurrency, transactional UX onto a data-and-compute plane produces a worse product on every axis:</p>
+    <ul>
+      <li><strong>Workload mismatch.</strong> Stewardship is thousands of small reads/writes with optimistic locking and rich form state — an OLTP pattern. Spark is an analytical engine; abusing it for per-click transactions is slow and expensive.</li>
+      <li><strong>Latency &amp; concurrency.</strong> Stewards expect sub-second interactions; cluster spin-up and job semantics don't fit.</li>
+      <li><strong>Separation of concerns.</strong> The <em>state</em> (cases, decisions, assignments) is data and belongs in Delta — fully native, fully audited. The <em>rendering</em> of that state is a presentation concern that belongs in a web app.</li>
+    </ul>
+    <div class="callout native">
+      <div class="ct">The boundary that keeps it native</div>
+      <p>The workbench writes decisions back to <code>mdm_steward</code> Delta tables; those decisions flow into mastering via CDF; the audit trail <em>is</em> the data. Nothing about identity, truth, or governance leaves the lakehouse. Only pixels do. That is the correct seam — and it's exactly how the strongest SaaS vendors separate their UI tier from their data tier anyway. (A Databricks App can host it for convenience without changing the principle.)</p>
+    </div>
+
+    <h2>Native-specific risks &amp; trade-offs</h2>
+    <div class="tablewrap">
+    <table>
+      <thead><tr><th>Risk</th><th>Trade-off</th><th>Control</th></tr></thead>
+      <tbody>
+        <tr><td>Build vs buy effort</td><td>You own match/survivorship engineering incumbents amortize across customers</td><td>Buy the hard kernel (Zingg/OSS) where sensible; templatize domains; phase scope (see roadmap).</td></tr>
+        <tr><td>Match quality cold-start</td><td>No pre-tuned rules; quality depends on your labels</td><td>Active learning + LLM adjudication to bootstrap; measure precision/recall continuously via monitoring.</td></tr>
+        <tr><td>LLM cost / latency on match</td><td>Adjudicating every pair is expensive</td><td>Use LLM only on the gray zone (calibrated prob 0.4–0.7); cache; batch; deterministic + vector handle the rest.</td></tr>
+        <tr><td>Real-time single-record lookup</td><td>Delta isn't a sub-10ms OLTP store</td><td>Online store / serving / Lakebase fed from Master; keep Delta as source of truth.</td></tr>
+        <tr><td>Platform coupling</td><td>Deep UC/Delta use = Databricks dependency</td><td>This is intentional. Mitigated by open formats (Delta, MLflow, Iceberg interop) — your <em>data</em> stays portable even if the platform is the home.</td></tr>
+        <tr><td>Governance learning curve</td><td>Teams must master UC instead of an app's own model</td><td>One governance model for the whole estate is a net simplification; invest once.</td></tr>
+        <tr><td>Stewardship app ownership</td><td>You build/maintain a web app</td><td>Thin app over stable Delta contracts; replaceable; integrate vendor UIs if preferred.</td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <h2>Whitespace: where a Databricks-native product is superior</h2>
+    <div class="kgrid">
+      <div class="box"><h4>Openness</h4><p>Master in open Delta, logic in open code, no proprietary store. Zero lock-in to a mastering vendor; your golden record outlives any tool choice.</p></div>
+      <div class="box"><h4>Proximity to data</h4><p>The master is queryable in-place by every BI tool, notebook, model, and Genie space — no export, no API hop, no staleness. This is structurally impossible for a Tier-2 SaaS hub.</p></div>
+      <div class="box"><h4>AI integration</h4><p>Vector Search + served FMs + MLflow let you do semantic match and LLM adjudication <em>against your data without exfiltrating it</em>. A closed hub must ship your PII to its models or yours to it.</p></div>
+      <div class="box"><h4>Governance lineage</h4><p>UC lineage spans source → master → consumption in one graph. Incumbents can only show lineage <em>inside</em> their hub; the lakehouse shows it end-to-end.</p></div>
+      <div class="box"><h4>Cost model</h4><p>DBUs + storage, elastic and serverless-capable — versus per-record/per-domain/per-seat licensing that punishes growth.</p></div>
+      <div class="box"><h4>Extensibility</h4><p>Strategy contracts mean a new match algorithm or domain is a plugin + YAML, not a vendor feature request on a roadmap you don't control.</p></div>
+      <div class="box"><h4>Data-product alignment</h4><p>The golden record <em>is</em> a governed data product with owners, contracts, SLAs, and discovery — not a sync target. It fits mesh/marketplace directly.</p></div>
+      <div class="box"><h4>Reprocessing &amp; trust experiments</h4><p>Time travel lets you replay a new survivorship rule against full history and A/B trust models — a capability hubs with mutable stores simply cannot offer.</p></div>
+    </div>
+
+    <div class="callout good">
+      <div class="ct">The strategic line</div>
+      <p>Concede <strong>stewardship polish, packaged domains, and the long connector tail</strong> — borrow or phase them. Own <strong>openness, data proximity, AI-in-place, end-to-end lineage, cost, and reprocessing</strong>. Those six are not features an incumbent can ship; they are consequences of architecture. That asymmetry is the entire reason to build native instead of buying Reltio.</p>
+    </div>
+
+    <div class="pager">
+      <a href="blueprint.html"><span class="pk">Prev · F</span>← Implementation Blueprint</a>
+      <a class="next" href="roadmap.html"><span class="pk">Next · H</span>Phased Roadmap →</a>
+    </div>
+  </main>
+</div>
+<script src="assets/nav.js"></script>
+</body>
+</html>
