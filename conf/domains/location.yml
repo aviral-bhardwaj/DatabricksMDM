@@ -1,0 +1,54 @@
+# Location domain — identity from standardized address + geocode proximity.
+domain: location
+
+entity_attributes: [street, city, region, postal_code, country]
+
+field_map:
+  sap:
+    ADRNR: source_pk
+    STREET: street
+    CITY1: city
+    REGION: region
+    POST_CODE1: postal_code
+    COUNTRY: country
+  salesforce:
+    Id: source_pk
+    Street: street
+    City: city
+    State: region
+    PostalCode: postal_code
+    Country: country
+
+standardization:
+  street: [text]
+  city: [text]
+  region: [text]
+  postal_code: [text]
+  country: [text]
+
+quality_rules:
+  - { field: street, kind: not_null, weight: 1 }
+  - { field: postal_code, kind: not_null, weight: 1 }
+  - { field: country, kind: not_null, weight: 1 }
+
+blocking:
+  - { fields: [postal_code] }
+  - { fields: [city], prefix: 4 }
+
+match_strategies:
+  - { kind: deterministic, id: addr_exact, keys: [street, postal_code] }
+  - kind: probabilistic
+    comparators:
+      - { field: street, method: jaro_winkler, weight: 3 }
+      - { field: city, method: token_set, weight: 1 }
+      - { field: postal_code, method: jaro_winkler, weight: 2 }
+
+merge_threshold: 0.9
+review_low: 0.8
+
+survivorship:
+  street:      { strategy: MOST_COMPLETE }
+  city:        { strategy: MOST_FREQUENT }
+  region:      { strategy: MOST_FREQUENT }
+  postal_code: { strategy: MOST_FREQUENT }
+  country:     { strategy: MOST_FREQUENT }

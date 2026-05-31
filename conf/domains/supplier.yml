@@ -1,0 +1,54 @@
+# Supplier domain — same engine, different config. Identity anchored on strong
+# IDs (DUNS / tax id) so deterministic match dominates.
+domain: supplier
+
+entity_attributes: [legal_name, duns, tax_id, city, country]
+
+field_map:
+  sap:
+    LIFNR: source_pk
+    NAME1: legal_name
+    DUNS: duns
+    STCEG: tax_id
+    ORT01: city
+    LAND1: country
+  oracle:
+    SUPPLIER_ID: source_pk
+    SUPPLIER_NAME: legal_name
+    DUNS_NUMBER: duns
+    TAX_REGISTRATION: tax_id
+    CITY: city
+    COUNTRY: country
+
+standardization:
+  legal_name: [name]
+  duns: [text]
+  tax_id: [text]
+  city: [text]
+  country: [text]
+
+quality_rules:
+  - { field: legal_name, kind: not_null, weight: 2 }
+  - { field: duns, kind: not_null, weight: 1 }
+
+blocking:
+  - { fields: [duns] }
+  - { fields: [legal_name], prefix: 5 }
+
+match_strategies:
+  - { kind: deterministic, id: duns_exact, keys: [duns] }
+  - { kind: deterministic, id: tax_exact, keys: [tax_id] }
+  - kind: probabilistic
+    comparators:
+      - { field: legal_name, method: jaro_winkler, weight: 3 }
+      - { field: city, method: token_set, weight: 1 }
+
+merge_threshold: 0.88
+review_low: 0.72
+
+survivorship:
+  legal_name: { strategy: SOURCE_PRIORITY, priority: { sap: 1, oracle: 2 } }
+  duns:       { strategy: MOST_FREQUENT }
+  tax_id:     { strategy: MOST_FREQUENT }
+  city:       { strategy: MOST_COMPLETE }
+  country:    { strategy: MOST_FREQUENT }

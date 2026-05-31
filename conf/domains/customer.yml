@@ -1,0 +1,75 @@
+# Customer domain — the engine is generic; a domain is pure configuration.
+domain: customer
+
+entity_attributes: [name, email, phone, city, country]
+
+# Source column -> canonical attribute (fixes v1's per-source hardcoding).
+field_map:
+  sap:
+    KUNNR: source_pk
+    NAME1: name
+    SMTP_ADDR: email
+    TELF1: phone
+    ORT01: city
+    LAND1: country
+  salesforce:
+    Id: source_pk
+    Name: name
+    Email: email
+    Phone: phone
+    City: city
+    Country: country
+  oracle:
+    CUSTOMER_ID: source_pk
+    CUSTOMER_NAME: name
+    EMAIL_ADDRESS: email
+    PHONE_NUMBER: phone
+    CITY: city
+    COUNTRY: country
+  odoo:
+    id: source_pk
+    name: name
+    email: email
+    phone: phone
+    city: city
+    country_code: country
+
+# Attribute -> ordered standardization function pipeline.
+standardization:
+  name: [name]
+  email: [email]
+  phone: [phone]
+  city: [text]
+  country: [text]
+
+# Declarative quality rules (any domain, not just customer).
+quality_rules:
+  - { field: name,  kind: not_null, weight: 2 }
+  - { field: email, kind: not_null, weight: 1 }
+  - { field: email, kind: regex, pattern: "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$", weight: 2 }
+  - { field: phone, kind: not_null, weight: 1 }
+
+# Blocking: compare only records sharing a key (O(n*b), not O(n^2)).
+blocking:
+  - { fields: [email] }
+  - { fields: [name], prefix: 4 }
+
+# Pluggable match strategies (Open/Closed). Registry takes the decisive one.
+match_strategies:
+  - { kind: deterministic, id: email_exact, keys: [email] }
+  - kind: probabilistic
+    comparators:
+      - { field: name,  method: jaro_winkler, weight: 3 }
+      - { field: city,  method: token_set,    weight: 1 }
+      - { field: phone, method: jaro_winkler, weight: 1 }
+
+merge_threshold: 0.85
+review_low: 0.70
+
+# Survivorship rules-as-data: each attribute resolved by a named strategy.
+survivorship:
+  name:    { strategy: SOURCE_PRIORITY, priority: { sap: 1, oracle: 2, salesforce: 3, odoo: 4 } }
+  email:   { strategy: MOST_FREQUENT }
+  phone:   { strategy: MOST_RECENT }
+  city:    { strategy: MOST_COMPLETE }
+  country: { strategy: MOST_FREQUENT }

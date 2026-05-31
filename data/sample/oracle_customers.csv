@@ -1,0 +1,5 @@
+CUSTOMER_ID,CUSTOMER_NAME,EMAIL_ADDRESS,PHONE_NUMBER,CITY,COUNTRY
+ORA-9001,Acme Corporation,accounts@acme.com,14155550100,San Francisco,US
+ORA-9002,Initech,sales@initech.com,15125550500,Austin,US
+ORA-9003,Globex Inc,contact@globex.com,14155550200,San Francisco,US
+ORA-9004,Stark Industries Inc,hello@stark.com,12135550600,Los Angeles,US
