@@ -6,7 +6,7 @@ pipelines, and all domain logic is a pure, unit-tested Python core with **no Spa
 coupling**. Built with SOLID + DDD, governed by Unity Catalog.
 
 > 📐 **Architecture blueprint** (the design behind this engine) is published as a
-> website under [`/docs`](docs/) → **https://aviral-bhardwaj.github.io/databricksmdm/**
+> website under [`/docs`](docs/) → **https://aviral-bhardwaj.github.io/DatabricksMDM/**
 
 ---
 
