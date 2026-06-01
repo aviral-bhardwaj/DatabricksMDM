@@ -1,0 +1,41 @@
+site_name: LakeMDM - Databricks Native MDM
+site_description: Golden records. Zero vendor lock-in. 100% Databricks-native Master Data Management.
+repo_name: DatabricksMDM
+repo_url: https://github.com/aviral-bhardwaj/DatabricksMDM
+
+theme:
+  name: material
+  features:
+    - content.code.copy
+    - navigation.tabs
+    - navigation.sections
+    - toc.integrate
+    - navigation.top
+  palette:
+    - scheme: default
+      primary: blue
+      accent: teal
+    - scheme: slate
+      primary: blue
+      accent: teal
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+
+markdown_extensions:
+  - pymdownx.highlight
+  - pymdownx.superfences
+  - admonition
+  - pymdownx.details
+
+nav:
+  - Home: index.md
+  - Product: product.md
+  - Architecture: architecture.md
+  - Domains: domains.md
+  - Quickstart: quickstart.md
+  - Deployment: deployment.md
+  - Examples: examples.md
+  - Contribute: contribute.md
+
+copyright: Copyright &copy; 2026 Aviral Bhardwaj - Apache 2.0 Licensed
