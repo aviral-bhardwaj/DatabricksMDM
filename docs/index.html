@@ -7,82 +7,105 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.6.0/css/all.min.css">
   <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
     body { font-family: 'Inter', system_ui, sans-serif; }
     .hero-gradient { background: linear-gradient(135deg, #0A84FF 0%, #10B981 100%); }
+    .card-hover { transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+    .card-hover:hover { transform: translateY(-4px); box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.1); }
   </style>
 </head>
 <body class="bg-slate-950 text-slate-200">
 
   <!-- Navbar -->
-  <nav class="sticky top-0 z-50 bg-slate-950 border-b border-slate-800">
+  <nav class="sticky top-0 z-50 bg-slate-950/80 backdrop-blur-lg border-b border-slate-800">
     <div class="max-w-screen-2xl mx-auto px-8 py-5 flex items-center justify-between">
       <div class="flex items-center gap-x-3">
-        <span class="text-2xl font-bold text-white">LakeMDM</span>
+        <span class="text-3xl font-bold bg-gradient-to-r from-blue-400 to-emerald-400 bg-clip-text text-transparent">LakeMDM</span>
       </div>
       <div class="hidden md:flex items-center gap-x-8 text-sm font-medium">
-        <a href="#" class="hover:text-white transition">Product</a>
-        <a href="#" class="hover:text-white transition">Architecture</a>
-        <a href="#" class="hover:text-white transition">Domains</a>
-        <a href="#" class="hover:text-white transition">Docs</a>
-        <a href="#" class="hover:text-white transition">Compare</a>
+        <a href="#product" class="hover:text-white transition">Product</a>
+        <a href="#architecture" class="hover:text-white transition">Architecture</a>
+        <a href="#compare" class="hover:text-white transition">Compare</a>
+        <a href="https://github.com/aviral-bhardwaj/DatabricksMDM" target="_blank" class="hover:text-white transition">Docs</a>
       </div>
       <div class="flex items-center gap-x-4">
-        <a href="https://github.com/aviral-bhardwaj/DatabricksMDM" target="_blank" 
-           class="px-5 py-2 text-sm font-medium border border-slate-700 rounded-xl hover:border-slate-400 transition">Star on GitHub</a>
-        <a href="#" class="px-6 py-2 bg-white text-slate-900 rounded-xl font-semibold hover:bg-slate-100 transition">Deploy Now</a>
+        <a href="https://github.com/aviral-bhardwaj/DatabricksMDM" target="_blank" class="px-6 py-2.5 text-sm font-medium border border-slate-700 rounded-2xl hover:border-slate-400 transition flex items-center gap-x-2">
+          <i class="fa-brands fa-github"></i> Star
+        </a>
+        <a href="#" class="px-8 py-2.5 bg-white text-slate-900 rounded-2xl font-semibold hover:bg-emerald-400 hover:text-white transition">Deploy to Workspace</a>
       </div>
     </div>
   </nav>
 
   <!-- Hero -->
-  <header class="hero-gradient py-24 text-center">
-    <div class="max-w-4xl mx-auto px-6">
-      <h1 class="text-6xl font-bold text-white leading-tight mb-6">
+  <header class="hero-gradient py-28 text-center">
+    <div class="max-w-5xl mx-auto px-6">
+      <h1 class="text-6xl md:text-7xl font-bold text-white leading-none mb-8">
         Golden records.<br>
-        <span class="text-white">Zero lock-in.</span><br>
-        100% Databricks-native.
+        Zero lock-in.<br>
+        <span class="text-white">100% Databricks-native.</span>
       </h1>
-      <p class="text-2xl text-white/90 mb-10">
-        Open-source Master Data Management engine built for the lakehouse.<br>
+      <p class="text-2xl text-white/90 max-w-2xl mx-auto mb-12">
+        The open-source Master Data Management engine built <span class="font-semibold">inside</span> your lakehouse.<br>
         Pure Python • Rules-as-data • Hybrid AI • Unity Catalog governance.
       </p>
-      <div class="flex items-center justify-center gap-x-6">
-        <a href="https://github.com/aviral-bhardwaj/DatabricksMDM" target="_blank"
-           class="px-8 py-4 bg-white text-slate-900 rounded-2xl font-semibold text-lg flex items-center gap-x-3 hover:scale-105 transition">
-          <i class="fa-brands fa-github"></i>
+      <div class="flex flex-wrap justify-center gap-4">
+        <a href="https://github.com/aviral-bhardwaj/DatabricksMDM" target="_blank" 
+           class="px-10 py-5 bg-white text-slate-900 rounded-3xl font-semibold text-xl flex items-center gap-x-3 hover:scale-105 transition">
+          <i class="fa-brands fa-github text-2xl"></i>
           Run Demo in 60 seconds
         </a>
-        <a href="#" class="px-8 py-4 border-2 border-white text-white rounded-2xl font-semibold text-lg hover:bg-white/10 transition">
-          Deploy to Workspace →
+        <a href="#" class="px-10 py-5 border-2 border-white text-white rounded-3xl font-semibold text-xl hover:bg-white/10 transition">
+          Deploy Now →
         </a>
       </div>
     </div>
   </header>
 
   <!-- Comparison -->
-  <section class="py-16 bg-slate-900">
+  <section id="compare" class="py-20 bg-slate-900">
     <div class="max-w-screen-2xl mx-auto px-8">
-      <h2 class="text-center text-4xl font-semibold mb-12">LakeMDM vs LakeFusion</h2>
-      <div class="grid md:grid-cols-2 gap-8 max-w-4xl mx-auto">
-        <!-- Add comparison table here if needed, but keeping it concise -->
+      <h2 class="text-center text-5xl font-semibold mb-16">LakeMDM vs LakeFusion</h2>
+      <div class="max-w-5xl mx-auto grid md:grid-cols-2 gap-8">
+        <div class="bg-slate-800 rounded-3xl p-8 border border-slate-700">
+          <h3 class="text-emerald-400 text-xl font-bold mb-6">LakeMDM (Open Source)</h3>
+          <ul class="space-y-4 text-lg">
+            <li>✅ Completely free</li>
+            <li>✅ Full source code</li>
+            <li>✅ Local testing with Pandas</li>
+            <li>✅ You own the rules & AI</li>
+            <li>✅ Pure Python + Databricks native</li>
+          </ul>
+        </div>
+        <div class="bg-slate-800 rounded-3xl p-8 border border-slate-700">
+          <h3 class="text-amber-400 text-xl font-bold mb-6">LakeFusion (Commercial)</h3>
+          <ul class="space-y-4 text-lg text-slate-400">
+            <li>❌ Paid Marketplace + support</li>
+            <li>❌ Closed source</li>
+            <li>❌ No local testing</li>
+            <li>❌ Vendor-controlled rules</li>
+            <li>❌ Black-box engine</li>
+          </ul>
+        </div>
       </div>
     </div>
   </section>
 
   <!-- Quickstart -->
-  <section class="py-20 bg-slate-950">
-    <div class="max-w-4xl mx-auto px-8">
-      <h2 class="text-4xl font-semibold text-center mb-10">Get started in 60 seconds</h2>
-      <pre class="bg-slate-900 p-8 rounded-3xl text-sm overflow-x-auto"><code>pip install -e ".[dev]"
+  <section class="py-20 bg-slate-950 border-t border-slate-800">
+    <div class="max-w-4xl mx-auto px-8 text-center">
+      <h2 class="text-5xl font-semibold mb-8">Get started in 60 seconds</h2>
+      <pre class="bg-slate-900 p-10 rounded-3xl text-left text-sm font-mono overflow-x-auto"><code>pip install -e ".[dev]"
 python -m mdm demo --ai
 databricks bundle deploy --target dev</code></pre>
+      <p class="mt-8 text-slate-400">Works locally • Works in Databricks • Zero configuration</p>
     </div>
   </section>
 
   <!-- Footer -->
   <footer class="bg-slate-900 py-12 border-t border-slate-800">
-    <div class="text-center text-slate-400 text-sm">
-      © 2026 LakeMDM • Apache 2.0 • Made for Databricks users who want transparency
+    <div class="max-w-screen-2xl mx-auto px-8 text-center text-slate-400">
+      © 2026 LakeMDM • Apache 2.0 License • Built for Databricks users who want transparency and control
     </div>
   </footer>
 
