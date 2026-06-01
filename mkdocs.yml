@@ -1,0 +1,31 @@
+site_name: DatabricksMDM - LakeMDM
+site_description: Databricks-native Master Data Management Engine
+site_url: https://aviral-bhardwaj.github.io/DatabricksMDM/
+repo_name: DatabricksMDM
+repo_url: https://github.com/aviral-bhardwaj/DatabricksMDM
+
+nav:
+  - Home: index.md
+  - Product: product.md
+  - Architecture: architecture.md
+  - Quickstart: quickstart.md
+  - Deployment: deployment.md
+  - Examples: examples.md
+  - Contribute: contribute.md
+
+plugins:
+  - search
+  - material
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/aviral-bhardwaj/DatabricksMDM
+
+markdown_extensions:
+  - pymdownx.highlight
+  - pymdownx.superfences
+  - admonition
+  - pymdownx.details
+
+copyright: '© 2026 Aviral Bhardwaj. Apache 2.0 Licensed.'
